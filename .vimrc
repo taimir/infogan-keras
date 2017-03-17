@@ -18,8 +18,8 @@ endif
 set rtp+=~/.vim/bundle/Vundle.vim
 call vundle#begin()
 
-" Terminal integration
-Plugin 'lrvick/Conque-Shell'
+" Terminal goodies for neovim
+Plugin 'vimlab/split-term.vim'
 
 " Vundle vim
 Plugin 'VundleVim/Vundle.vim'
@@ -135,17 +135,6 @@ let g:pymode_lint_on_fly = 1
 let g:pymode_options_max_line_length = 100
 " hack to use ipdb instead of pdb
 map <Leader>b Oimport ipdb; ipdb.set_trace() # BREAKPOINT<C-c>
-
-" ConqueShell settings
-let g:ConqueTerm_CloseOnEnd = 1
-let g:ConqueTerm_InsertOnEnter = 1
-let g:ConqueTerm_Color = 0
-let g:ConqueTerm_PyVersion = 3
-function MyConqueStartup(term)
-	resize 10
-endfunction
-
-call conque_term#register_function('after_startup', 'MyConqueStartup')
 
 " Rename refactor
 function! Refactor()
