@@ -10,3 +10,6 @@ class ModelTrainer(object):
 
     def __init__(self, model):
         self.model = model
+
+    def train(self, samples):
+        raise NotImplementedError

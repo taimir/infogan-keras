@@ -6,6 +6,7 @@ Mainly needed because PDF functions are not defines in keras.
 import abc
 
 import keras.backend as K
+from keras.activations import linear, softmax, softplus
 import numpy as np
 
 
@@ -39,6 +40,14 @@ class Distribution(abc.ABCMeta):
     def nll(self, samples, param_dict):
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def sample_shape(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def param_info(self):
+        raise NotImplementedError
+
 
 class IsotropicGaussian(Distribution):
 
@@ -59,6 +68,16 @@ class IsotropicGaussian(Distribution):
         return -K.sum(
             -0.5 * np.log(2 * np.pi) - K.log(std) - 0.5 * K.square((samples - mean) / std),
             axis=-1)
+
+    def sample_shape(self):
+        return self.dim
+
+    def param_info(self):
+        # since we are isotropic, only one number for the std. dev
+        return {
+            'mean': (self.dim, linear),
+            'std': (1, softplus)
+        }
 
 
 class Categorical(Distribution):
@@ -90,3 +109,11 @@ class Categorical(Distribution):
         return -K.sum(
             samples * K.log(p_vals),
             axis=1)
+
+    def sample_shape(self):
+        return self.n_classes
+
+    def param_info(self):
+        return {
+            'p_vals': (self.n_classes, softmax)
+        }
