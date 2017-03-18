@@ -41,7 +41,7 @@ class Distribution(abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def sample_shape(self):
+    def sample_size(self):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -69,7 +69,7 @@ class IsotropicGaussian(Distribution):
             -0.5 * np.log(2 * np.pi) - K.log(std) - 0.5 * K.square((samples - mean) / std),
             axis=-1)
 
-    def sample_shape(self):
+    def sample_size(self):
         return self.dim
 
     def param_info(self):
@@ -110,7 +110,7 @@ class Categorical(Distribution):
             samples * K.log(p_vals),
             axis=1)
 
-    def sample_shape(self):
+    def sample_size(self):
         return self.n_classes
 
     def param_info(self):

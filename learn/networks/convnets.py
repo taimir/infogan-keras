@@ -27,9 +27,12 @@ def generation_net(inputs, image_shape):
     network = BatchNormalization()(network)
     network = Activation(activation=K.relu)(network)
 
+    # TODO: if we'll be generating color images, this needs to produce
+    # a 256 * image_shape[0] number of channels
     output_shape = (None,) + image_shape
     network = Deconv2D(nb_filter=image_shape[0], nb_row=4, nb_col=4,
                        output_shape=output_shape)(network)
+    network = Activation(activation=K.sigmoid)(network)
 
     return network
 
