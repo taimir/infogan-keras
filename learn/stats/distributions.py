@@ -58,16 +58,16 @@ class IsotropicGaussian(Distribution):
     def sample(self, param_dict):
         mean = param_dict['mean']
         std = param_dict['std']
-        eps = K.random_normal(shape=(self.batch_size, self.dim), mean=0, std=1.)
+        eps = K.random_normal(shape=K.shape(mean), mean=0, std=1.)
         sample = mean + std * eps
         return sample
 
     def nll(self, samples, param_dict):
         mean = param_dict['mean']
         std = param_dict['std']
-        return -K.sum(
+        return K.mean(-K.sum(
             -0.5 * np.log(2 * np.pi) - K.log(std) - 0.5 * K.square((samples - mean) / std),
-            axis=-1)
+            axis=-1))
 
     def sample_size(self):
         return self.dim
@@ -97,7 +97,7 @@ class Categorical(Distribution):
         else:
             from theano.tensor.shared_randomstreams import RandomStreams
             random = RandomStreams()
-            return random.multinomial(size=(self.batch_size,), n=1, pvals=p_vals)
+            return random.multinomial(size=K.shape(p_vals), n=1, pvals=p_vals)
 
     def nll(self, samples, param_dict):
         """log_pdf
@@ -106,12 +106,50 @@ class Categorical(Distribution):
         :param param_dict - { 'p_vals': ...}
         """
         p_vals = param_dict['p_vals']
-        return -K.sum(
+        return K.mean(-K.sum(
             samples * K.log(p_vals),
-            axis=1)
+            axis=1))
 
     def sample_size(self):
         return self.n_classes
+
+    def param_info(self):
+        return {
+            'p_vals': (self.n_classes, softmax)
+        }
+
+
+class Bernoulli(Distribution):
+
+    def __init__(self, batch_size):
+        self.batch_size = batch_size
+
+    def sample(self, param_dict):
+        p = param_dict['p']
+        if K.backend() == 'tensorflow':
+            import tensorflow as tf
+            shape = K.shape(p)
+            return tf.select(tf.random_uniform(shape=K.shape(p)) - p > 0.0,
+                             tf.ones(shape),
+                             tf.zeros(shape))
+        else:
+            from theano.tensor.shared_randomstreams import RandomStreams
+            random = RandomStreams()
+            return random.binomial(size=K.shape(p), n=1, p=p)
+
+    def nll(self, samples, param_dict):
+        """log_pdf
+
+        :param samples - one-hot encoded categorical samples, batch_size many
+        :param param_dict - { 'p_vals': ...}
+        """
+        p_vals = param_dict['p_vals']
+        return K.mean(-K.sum(
+            samples * K.log(p_vals) + (1 - samples) * K.log(1 - p_vals),
+            axis=1))
+
+    def sample_size(self):
+        return 1
 
     def param_info(self):
         return {

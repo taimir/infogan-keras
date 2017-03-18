@@ -2,6 +2,7 @@
 Implementation of the InfoGAN network
 """
 
+import numpy as np
 import keras.backend as K
 from keras.layers import InputLayer, Dense, BatchNormalization, Activation, Merge
 from keras.layers.core import Lambda
@@ -30,6 +31,7 @@ class InfoGAN(object):
                  ):
         """__init__
 
+        :param batch_size - number of real samples passed at each iteration
         :param image_shape - triple (n_chan, img_height, img_width), shape of generated images
         :param noise_dists - dict of {'<name>': Distribution, ...}
         :param meaningful_dists - dict of {'<name>': Distribution, ...}
@@ -145,6 +147,10 @@ class InfoGAN(object):
                           loss=gen_loss)
         self.gan_model = gan_model
 
+        # dummy targets, used during the training
+        # this is a workaround for keras
+        self.dummy_targets = np.ones((self.batch_size,))
+
     def _sample_latent_inputs(self, dummy_input):
         noise_samples = []
         for name, dist in self.noise_dists.items():
@@ -181,8 +187,8 @@ class InfoGAN(object):
             outputs[param] = out
         return outputs
 
-    def train_pass(samples):
-        raise NotImplementedError
+    def train_disc_pass(self, samples_batch):
+        self.disc_model.train_on_batch(samples_batch, self.dummy_targets)
 
-    def test_pass(samples):
-        raise NotImplementedError
+    def train_gen_pass(self, samples_batch):
+        self.gan_model.train_on_batch(samples_batch, self.dummy_targets)
