@@ -17,8 +17,8 @@ batch_size = 1
 if __name__ == "__main__":
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
-    x_train = x_train.reshape((-1, 1, 28, 28))
-    x_test = x_test.reshape((-1, 1, 28, 28))
+    x_train = x_train.reshape((-1, 1, 28, 28)) / 255
+    x_test = x_test.reshape((-1, 1, 28, 28)) / 255
 
     datagen = ImageDataGenerator(data_format='channels_first')
     datagen.fit(x_train)

@@ -44,6 +44,8 @@ class InfoGAN(object):
 
         real_input = Input(shape=self.image_shape, name="d_real_input")
         sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = self._sample_latent_inputs()
+        sampled_latents_flat = list(sampled_latents.values())
+        merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
 
         self.prior_param_inputs = prior_param_inputs
         self.prior_param_names = prior_param_names
@@ -51,7 +53,7 @@ class InfoGAN(object):
 
         # GENERATOR
         # --------------------------------------------------------------------
-        generation_params = generation_net(inputs=sampled_latents,
+        generation_params = generation_net(inputs=merged_samples,
                                            image_shape=self.image_shape)
 
         generated = Lambda(function=self._sample_image,
@@ -77,6 +79,7 @@ class InfoGAN(object):
 
         # binary output for the GAN classification
         disc_out = Dense(1, name="d_classif_layer")(shared)
+        disc_out = Activation(activation=K.sigmoid, name="d_classif_activ")(disc_out)
 
         def disc_loss(targets, preds):
             # targets are disregarded, as it's clear what they are
@@ -110,47 +113,36 @@ class InfoGAN(object):
         encoder_net = LeakyReLU(name="e_dense_activ_1")(encoder_net)
 
         # add outputs for the parameters of all assumed meaninful distributions
-        dist_outputs = {}
-        for name, dist in meaningful_dists.items():
-            outputs = self._add_dist_outputs(name, dist, encoder_net)
-            dist_outputs[name] = outputs
+        posterior_outputs = []
+        mi_losses = []
+        for dist_name, dist in meaningful_dists.items():
+            param_outputs_dict = self._add_dist_outputs(dist_name, dist, encoder_net)
+            param_outputs_list = []
+            param_names_list = []
+            param_outputs_dims = []
 
-        latent_outputs_list = []
-        for dist_output in dist_outputs.values():
-            latent_outputs_list += dist_output.values()
-        encoder_out = Concatenate(axis=-1, name="e_output_concat")(latent_outputs_list)
+            for param_name, (dim, _) in dist.param_info().items():
+                param_outputs_list.append(param_outputs_dict[param_name])
+                param_outputs_dims.append(dim)
+                param_names_list.append(param_name)
 
-        # TODO: instead of indexing 1 big loss, make a dictionary of one loss
-        # per distribution
-        def mutual_info_loss(targets, preds):
-            # Again, the targets are essentially ignored
-            param_index = 0
-            sample_index = 0
-            loss = 0
+            if len(param_outputs_list) > 1:
+                merged_params = Concatenate(axis=-1,
+                                            name="e_concat_outputs_{}".format(dist_name))(param_outputs_list)
+            else:
+                merged_params = param_outputs_list[0]
 
-            # take only the generated samples
-            preds = preds[:self.batch_size]
+            posterior_outputs.append(merged_params)
 
-            for dist in self.meaningful_dists.values():
-                # form the parameter dict of each distribution
-                param_dict = {}
-                for param_name, (dim, _) in dist.param_info().items():
-                    param_dict[param_name] = preds[:, param_index:param_index + dim]
-                    param_index += dim
+            # build the mi_loss
+            samples = sampled_latents[dist_name]
+            mi_loss = self._build_mi_loss(samples, dist, param_names_list, param_outputs_dims)
 
-                # now get the sampled latent factors for this dist.
-                sample_size = dist.sample_size()
-                latent_samples = sampled_latents[:, sample_index:sample_index + sample_size]
-                sample_index += sample_size
-
-                # finally compute the NLL
-                loss += dist.nll(latent_samples, param_dict)
-
-            return loss
+            mi_losses.append(mi_loss)
 
         self.encoder_model = Model(inputs=[real_input] + prior_param_inputs,
-                                   outputs=encoder_out, name="enc_model")
-        self.encoder_model.compile(optimizer='adam', loss=mutual_info_loss)
+                                   outputs=posterior_outputs, name="enc_model")
+        self.encoder_model.compile(optimizer='adam', loss=mi_losses)
 
         # ENCODER + GENERATOR are trained together
         def gen_loss(targets, preds):
@@ -164,9 +156,9 @@ class InfoGAN(object):
             return loss
 
         self.enc_gen_model = Model(inputs=[real_input] + prior_param_inputs,
-                                   outputs=[disc_out, encoder_out],
+                                   outputs=[disc_out] + posterior_outputs,
                                    name="enc_gen_model")
-        self.enc_gen_model.compile(optimizer='adam', loss=[gen_loss, mutual_info_loss])
+        self.enc_gen_model.compile(optimizer='adam', loss=[gen_loss] + mi_losses)
 
         # DEBUGGING
         self._layer_functions = {}
@@ -177,26 +169,25 @@ class InfoGAN(object):
                                                            outputs=[layer.get_output_at(0)])
 
     def _sample_latent_inputs(self):
-        samples = []
+        samples = {}
         all_param_inputs = []
         all_param_names = []
         all_param_dist_names = []
         for name, dist in self.noise_dists.items():
             sample, param_names, param_inputs = self._sample_latent_input(name, dist)
-            samples.append(sample)
+            samples[name] = sample
             all_param_inputs += param_inputs
             all_param_names += param_names
             all_param_dist_names += [name] * len(param_names)
 
         for name, dist in self.meaningful_dists.items():
             sample, param_names, param_inputs = self._sample_latent_input(name, dist)
-            samples.append(sample)
+            samples[name] = sample
             all_param_inputs += param_inputs
             all_param_names += param_names
             all_param_dist_names += [name] * len(param_names)
 
-        merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(samples)
-        return merged_samples, all_param_inputs, all_param_names, all_param_dist_names
+        return samples, all_param_inputs, all_param_names, all_param_dist_names
 
     def _sample_latent_input(self, dist_name, dist):
         param_names = []
@@ -251,6 +242,18 @@ class InfoGAN(object):
             outputs[param] = out
         return outputs
 
+    def _build_mi_loss(self, samples, dist, param_names_list, param_outputs_dims):
+        def mutual_info_loss(targets, preds):
+            # ignore the targets
+            param_dict = {}
+            param_index = 0
+            for param_name, dim in zip(param_names_list, param_outputs_dims):
+                param_dict[param_name] = preds[:, param_index:param_index + dim]
+                param_index += dim
+            loss = dist.nll(samples, param_dict)
+            return loss
+        return mutual_info_loss
+
     def _assemble_prior_params(self):
         params = []
         for dist_name, param_name in zip(self.prior_param_dist_names, self.prior_param_names):
@@ -258,16 +261,18 @@ class InfoGAN(object):
         return params
 
     def train_disc_pass(self, samples_batch):
-        dummy_targets = np.ones((self.batch_size,), dtype=np.float32)
+        dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
+            len(self.disc_model.outputs)
         prior_params = self._assemble_prior_params()
         return self.disc_model.train_on_batch([samples_batch] + prior_params,
-                                              [dummy_targets])
+                                              dummy_targets)
 
     def train_gen_pass(self, samples_batch):
-        dummy_targets = np.ones((self.batch_size,), dtype=np.float32)
+        dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
+            len(self.enc_gen_model.outputs)
         prior_params = self._assemble_prior_params()
         return self.enc_gen_model.train_on_batch([samples_batch] + prior_params,
-                                                 [dummy_targets, dummy_targets])
+                                                 dummy_targets)
 
     def activation(self, index, samples):
         name = self._layer_names[index]

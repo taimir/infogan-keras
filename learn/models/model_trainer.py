@@ -30,10 +30,8 @@ class ModelTrainer(object):
             counter += 1
             if counter % 10 == 9:
                 gen_losses = self.model.train_gen_pass(samples)
-                for i in range(len(self.model._layer_functions)):
-                    name, output = self.model.activation(i, samples)
-
-                    continue
+                # for i in range(len(self.model._layer_functions)):
+                # name, output = self.model.activation(i, samples)
 
                 print("Gen losses: {}".format(gen_losses) + "\tDisc loss: {}".format(disc_loss))
                 loss_logs = {}
