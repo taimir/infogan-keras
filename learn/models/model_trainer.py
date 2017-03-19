@@ -2,7 +2,6 @@
 Trainer for the InfoGan
 """
 
-
 class ModelTrainer(object):
     """
     ModelTrainer implements the training procedure of InfoGAN
@@ -19,7 +18,10 @@ class ModelTrainer(object):
 
     def train(self):
         counter = 0
-        for samples, _ in self.data_generator():
+        for samples in self.data_generator():
+            print("discriminator iteration")
             self.model.train_disc_pass(samples)
+            counter += 1
             if counter % 10 == 9:
+                print("generator iteration")
                 self.model.train_gen_pass(samples)

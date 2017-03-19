@@ -27,10 +27,11 @@ def cholesky(square_mat):
         return L
 
 
-class Distribution(abc.ABCMeta):
+class Distribution(object):
     """
     Abstract distribution class
     """
+    __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def sample(self, param_dict):
@@ -51,14 +52,13 @@ class Distribution(abc.ABCMeta):
 
 class IsotropicGaussian(Distribution):
 
-    def __init__(self, batch_size, dim):
-        self.batch_size = batch_size
+    def __init__(self, dim):
         self.dim = dim
 
     def sample(self, param_dict):
         mean = param_dict['mean']
         std = param_dict['std']
-        eps = K.random_normal(shape=K.shape(mean), mean=0, std=1.)
+        eps = K.random_normal(shape=K.shape(mean), mean=0, stddev=1.)
         sample = mean + std * eps
         return sample
 
@@ -82,8 +82,7 @@ class IsotropicGaussian(Distribution):
 
 class Categorical(Distribution):
 
-    def __init__(self, batch_size, n_classes):
-        self.batch_size = batch_size
+    def __init__(self, n_classes):
         self.n_classes = n_classes
 
     def sample(self, param_dict):
@@ -102,13 +101,11 @@ class Categorical(Distribution):
     def nll(self, samples, param_dict):
         """log_pdf
 
-        :param samples - one-hot encoded categorical samples, batch_size many
         :param param_dict - { 'p_vals': ...}
         """
         p_vals = param_dict['p_vals']
-        return K.mean(-K.sum(
-            samples * K.log(p_vals),
-            axis=1))
+
+        return K.mean(-K.sum(samples * K.log(p_vals), axis=1))
 
     def sample_size(self):
         return self.n_classes
@@ -121,29 +118,16 @@ class Categorical(Distribution):
 
 class Bernoulli(Distribution):
 
-    def __init__(self, batch_size):
-        self.batch_size = batch_size
-
     def sample(self, param_dict):
         p = param_dict['p']
-        if K.backend() == 'tensorflow':
-            import tensorflow as tf
-            shape = K.shape(p)
-            return tf.select(tf.random_uniform(shape=K.shape(p)) - p > 0.0,
-                             tf.ones(shape),
-                             tf.zeros(shape))
-        else:
-            from theano.tensor.shared_randomstreams import RandomStreams
-            random = RandomStreams()
-            return random.binomial(size=K.shape(p), n=1, p=p)
+        return K.random_binomial(shape=K.shape(p), p=p)
 
     def nll(self, samples, param_dict):
         """log_pdf
 
-        :param samples - one-hot encoded categorical samples, batch_size many
         :param param_dict - { 'p_vals': ...}
         """
-        p_vals = param_dict['p_vals']
+        p_vals = param_dict['p']
         return K.mean(-K.sum(
             samples * K.log(p_vals) + (1 - samples) * K.log(1 - p_vals),
             axis=1))
@@ -153,5 +137,5 @@ class Bernoulli(Distribution):
 
     def param_info(self):
         return {
-            'p_vals': (self.n_classes, softmax)
+            'p': (1, sigmoid)
         }
