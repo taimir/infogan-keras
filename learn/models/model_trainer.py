@@ -35,9 +35,9 @@ class ModelTrainer(object):
 
                 print("Gen losses: {}".format(gen_losses) + "\tDisc loss: {}".format(disc_loss))
                 loss_logs = {}
-                loss_logs['disc'] = disc_loss
-                loss_logs['gen_adversarial'] = gen_losses[0]
-                loss_logs['gen_MI'] = gen_losses[1]
+                loss_logs['discriminator_loss'] = disc_loss
+                for loss, loss_name in zip(gen_losses, self.model.enc_gen_model.metrics_names):
+                    loss_logs[loss_name] = loss
                 self.board.on_epoch_end(epoch_count, loss_logs)
                 epoch_count += 1
         self.board.on_train_end({})

@@ -65,9 +65,9 @@ class IsotropicGaussian(Distribution):
     def nll(self, samples, param_dict):
         mean = param_dict['mean']
         std = param_dict['std']
-        return K.mean(-K.sum(
-            -0.5 * np.log(2 * np.pi) - K.log(std) - 0.5 * K.square((samples - mean) / std),
-            axis=-1))
+        return K.sum(
+            0.5 * np.log(2 * np.pi) + K.log(std) + 0.5 * K.square((samples - mean) / std),
+            axis=-1)
 
     def sample_size(self):
         return self.dim
@@ -105,7 +105,7 @@ class Categorical(Distribution):
         """
         p_vals = param_dict['p_vals']
 
-        return K.mean(-K.sum(samples * K.log(p_vals), axis=1))
+        return -K.sum(samples * K.log(p_vals), axis=-1)
 
     def sample_size(self):
         return self.n_classes
