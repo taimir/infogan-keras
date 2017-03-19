@@ -76,7 +76,7 @@ class IsotropicGaussian(Distribution):
         # since we are isotropic, only one number for the std. dev
         return {
             'mean': (self.dim, linear),
-            'std': (1, softplus)
+            'std': (self.dim, softplus)
         }
 
 

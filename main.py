@@ -32,9 +32,13 @@ if __name__ == "__main__":
     noise_dists = {'z': IsotropicGaussian(dim=30)}
     image_dist = Bernoulli()
     prior_params = {'c1': {'p_vals': np.ones((batch_size, 10), dtype=np.float32) / 10},
-                    'c2': {'mean': np.zeros((batch_size, 1)), 'std': 1.0},
-                    'c3': {'mean': np.zeros((batch_size, 1)), 'std': 1.0},
-                    'z': {'mean': np.zeros((batch_size, 30)), 'std': 1.0}}
+                    'c2': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
+                           'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    'c3': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
+                           'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    'z': {'mean': np.zeros((batch_size, 30), dtype=np.float32),
+                          'std': np.ones((batch_size, 30), dtype=np.float32)}
+                    }
 
     model = InfoGAN(batch_size=batch_size,
                     image_shape=(1, 28, 28),
@@ -43,8 +47,9 @@ if __name__ == "__main__":
                     image_dist=image_dist,
                     prior_params=prior_params)
 
-    plot_model(model.gan_model, to_file='gan_model.png')
+    plot_model(model.enc_gen_model, to_file='gan_model.png')
     plot_model(model.disc_model, to_file='disc_model.png')
+    plot_model(model.encoder_model, to_file='encoder_model.png')
 
     model_trainer = ModelTrainer(model, data_generator)
 
