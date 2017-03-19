@@ -210,12 +210,12 @@ class InfoGAN(object):
         batch = np.concatenate([fake_x, samples_batch], axis=0)
         dummy_targets = np.ones((2 * self.batch_size,))
 
-        self.disc_model.train_on_batch(batch, dummy_targets)
+        return self.disc_model.train_on_batch(batch, dummy_targets)
 
     def train_gen_pass(self, samples_batch):
-        dummy_inputs = np.ones((self.batch_size, 1))
-        dummy_targets = np.ones((self.batch_size,))
-        self.gan_model.train_on_batch([dummy_inputs, samples_batch], [dummy_targets, dummy_targets])
+        dummy_inputs = np.ones((self.batch_size, 1), dtype=np.float32)
+        dummy_targets = np.ones((self.batch_size,), dtype=np.float32)
+        return self.gan_model.train_on_batch([dummy_inputs, samples_batch], [dummy_targets, dummy_targets])
 
     def generate(self):
         dummy = np.ones((self.batch_size, 1))

@@ -6,7 +6,7 @@ Mainly needed because PDF functions are not defines in keras.
 import abc
 
 import keras.backend as K
-from keras.activations import linear, softmax, softplus
+from keras.activations import linear, softmax, softplus, sigmoid
 import numpy as np
 
 
@@ -96,7 +96,7 @@ class Categorical(Distribution):
         else:
             from theano.tensor.shared_randomstreams import RandomStreams
             random = RandomStreams()
-            return random.multinomial(size=K.shape(p_vals), n=1, pvals=p_vals)
+            return random.multinomial(size=K.shape(p_vals)[:-1], n=1, pvals=p_vals)
 
     def nll(self, samples, param_dict):
         """log_pdf
@@ -120,7 +120,11 @@ class Bernoulli(Distribution):
 
     def sample(self, param_dict):
         p = param_dict['p']
-        return K.random_binomial(shape=K.shape(p), p=p)
+        # return K.random_binomial(shape=K.shape(p), p=p)
+
+        # TODO: for now, just return the mean
+        # but this needs to be fixed with the SGVB reparametrization
+        return p
 
     def nll(self, samples, param_dict):
         """log_pdf

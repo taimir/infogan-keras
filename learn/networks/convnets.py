@@ -49,11 +49,15 @@ def generation_net(inputs, image_shape):
 def discrimination_net(inputs):
     network = inputs
 
-    network = Conv2D(filters=8, kernel_size=(4, 4),
+    network = Conv2D(filters=8,
+                     kernel_size=(5, 5),
+                     padding="same",
                      name="d_conv_1")(network)
     network = LeakyReLU(name="d_conv_activ_1")(network)
 
-    network = Conv2D(filters=16, kernel_size=(4, 4),
+    network = Conv2D(filters=16,
+                     kernel_size=(3, 3),
+                     padding="same",
                      name="d_conv_2")(network)
     network = BatchNormalization(name="d_conv_bn_2")(network)
     network = LeakyReLU(name="d_conv_activ_2")(network)
