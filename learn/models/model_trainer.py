@@ -19,8 +19,8 @@ class ModelTrainer(object):
         self.model = gan_model
         self.data_generator = data_generator
 
-        self.board = TensorBoard()
-        self.board.set_model(self.model)
+        self.board = TensorBoard(histogram_freq=100)
+        self.board.set_model(self.model.enc_gen_model)
 
     def train(self):
         counter = 0
@@ -28,7 +28,7 @@ class ModelTrainer(object):
         for samples in self.data_generator():
             disc_loss = self.model.train_disc_pass(samples)
             counter += 1
-            if counter % 10 == 9:
+            if counter % 2 == 1:
                 gen_losses = self.model.train_gen_pass()
                 # for i in range(len(self.model._layer_functions)):
                 # name, output = self.model.activation(i, samples)
@@ -40,4 +40,7 @@ class ModelTrainer(object):
                     loss_logs[loss_name] = loss
                 self.board.on_epoch_end(epoch_count, loss_logs)
                 epoch_count += 1
+
+            if counter % 20 == 0:
+                self.model._sanity_check()
         self.board.on_train_end({})

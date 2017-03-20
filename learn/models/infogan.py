@@ -10,6 +10,7 @@ from keras.layers.core import Lambda
 from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Model
 from keras.objectives import binary_crossentropy
+from keras.activations import linear
 
 from learn.networks.convnets import GeneratorNet, SharedNet
 
@@ -42,7 +43,7 @@ class InfoGAN(object):
         self.image_dist = image_dist
         self.prior_params = prior_params
 
-        d_input = Input(batch_shape=(2 * self.batch_size,) + self.image_shape, name="d_input")
+        d_input = Input(shape=self.image_shape, name="d_input")
         sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = self._sample_latent_inputs()
         sampled_latents_flat = list(sampled_latents.values())
         merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
@@ -63,13 +64,13 @@ class InfoGAN(object):
         self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
         # NOTE: the loss here does not matter, it won't be used ...
         # the model is just compiled so that we can generate samples from it with .predict()
-        self.gen_model.compile(optimizer='adam', loss='binary_crossentropy')
+        self.gen_model.compile(optimizer='adam', loss=binary_crossentropy)
 
         # DISCRIMINATOR
         # --------------------------------------------------------------------
         # Disable the generator params while we define the discriminator
         # for layer in self.gen_model.layers:
-            # layer.trainable = False
+        # layer.trainable = False
 
         # now append the real images to the generated ones
         # merged = Concatenate(axis=0, name="d_concat_fake_real")([generated, real_input])
@@ -86,12 +87,12 @@ class InfoGAN(object):
         disc_out = disc_sigmoid(disc_out)
 
         # def disc_loss(targets, preds):
-            # # targets are disregarded, as it's clear what they are
-            # # the first batch_size many are zeros (generated)
-            # # the second batch_size many are ones (real)
-            # targets_generated = K.zeros(shape=(self.batch_size, 1))
-            # targets_real = K.ones(shape=(self.batch_size, 1))
-            # targets = K.concatenate([targets_generated, targets_real], axis=0)
+        # # targets are disregarded, as it's clear what they are
+        # # the first batch_size many are zeros (generated)
+        # # the second batch_size many are ones (real)
+        # targets_generated = K.zeros(shape=(self.batch_size, 1))
+        # targets_real = K.ones(shape=(self.batch_size, 1))
+        # targets = K.concatenate([targets_generated, targets_real], axis=0)
 
             # return binary_crossentropy(targets, preds)
 
@@ -108,7 +109,7 @@ class InfoGAN(object):
 
         # unfreeze the generator
         # for layer in self.gen_model.layers:
-            # layer.trainable = True
+        # layer.trainable = True
 
         # TODO: decide whether to freeze the discriminator
 
@@ -120,7 +121,7 @@ class InfoGAN(object):
 
         # add outputs for the parameters of all assumed meaninful distributions
         posterior_outputs = []
-        mi_losses = []
+        mi_losses = {}
         for dist_name, dist in meaningful_dists.items():
             param_outputs_dict = self._add_dist_outputs(dist_name, dist, encoder_net)
             param_outputs_list = []
@@ -132,11 +133,14 @@ class InfoGAN(object):
                 param_outputs_dims.append(dim)
                 param_names_list.append(param_name)
 
+            loss_output_name = "e_loss_output_{}".format(dist_name)
             if len(param_outputs_list) > 1:
                 merged_params = Concatenate(axis=-1,
-                                            name="e_concat_outputs_{}".format(dist_name))(param_outputs_list)
+                                            name=loss_output_name)(param_outputs_list)
             else:
                 merged_params = param_outputs_list[0]
+                merged_params = Activation(activation=linear,
+                                           name=loss_output_name)(merged_params)
 
             posterior_outputs.append(merged_params)
 
@@ -144,7 +148,7 @@ class InfoGAN(object):
             samples = sampled_latents[dist_name]
             mi_loss = self._build_mi_loss(samples, dist, param_names_list, param_outputs_dims)
 
-            mi_losses.append(mi_loss)
+            mi_losses[loss_output_name] = mi_loss
 
         self.encoder_model = Model(inputs=prior_param_inputs,
                                    outputs=posterior_outputs,
@@ -158,22 +162,25 @@ class InfoGAN(object):
             # preds = preds[:self.batch_size]
 
             # define the standard disc GAN loss
-            loss = K.sum(-K.log(preds))
+            loss = -K.log(preds)
 
             return loss
 
 
-        # Make the discriminator not trainable
+        # Make the discriminator part not trainable
         disc_last_dense.trainable = False
         disc_sigmoid.trainable = False
 
         gen_disc_out =  disc_last_dense(shared_gen)
         gen_disc_out = disc_sigmoid(gen_disc_out)
 
+        losses = mi_losses.copy()
+        losses[disc_sigmoid.name] = gen_loss
+
         self.enc_gen_model = Model(inputs=prior_param_inputs,
                                    outputs=[gen_disc_out] + posterior_outputs,
                                    name="enc_gen_model")
-        self.enc_gen_model.compile(optimizer='adam', loss=[gen_loss] + mi_losses)
+        self.enc_gen_model.compile(optimizer='adam', loss=losses)
 
         # DEBUGGING
         self._layer_functions = {}
@@ -182,6 +189,23 @@ class InfoGAN(object):
             self._layer_names.append(layer.name)
             self._layer_functions[layer.name] = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
                                                            outputs=[layer.get_output_at(0)])
+            # disc prediction
+            self.disc_prediction = K.function(inputs=[K.learning_phase()] + self.disc_model.inputs,
+                                              outputs=[disc_out])
+
+        self.gen_and_predict = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
+                                          outputs=[gen_disc_out, -K.log(gen_disc_out), generated])
+
+
+    def _sanity_check(self):
+        prior_params = self._assemble_prior_params()
+
+        gen_score, log_vals, samples = self.gen_and_predict([0] + prior_params)
+        disc_score = self.disc_prediction([0] + [samples])
+        print(gen_score)
+        print(log_vals)
+        print(disc_score)
+        assert np.all(np.equal(gen_score, disc_score))
 
     def _sample_latent_inputs(self):
         samples = {}
