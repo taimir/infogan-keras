@@ -29,7 +29,7 @@ class ModelTrainer(object):
             disc_loss = self.model.train_disc_pass(samples)
             counter += 1
             if counter % 10 == 9:
-                gen_losses = self.model.train_gen_pass(samples)
+                gen_losses = self.model.train_gen_pass()
                 # for i in range(len(self.model._layer_functions)):
                 # name, output = self.model.activation(i, samples)
 

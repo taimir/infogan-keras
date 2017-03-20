@@ -11,7 +11,7 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Model
 from keras.objectives import binary_crossentropy
 
-from learn.networks.convnets import discrimination_net, generation_net
+from learn.networks.convnets import GeneratorNet, SharedNet
 
 
 class InfoGAN(object):
@@ -42,7 +42,7 @@ class InfoGAN(object):
         self.image_dist = image_dist
         self.prior_params = prior_params
 
-        real_input = Input(shape=self.image_shape, name="d_real_input")
+        d_input = Input(batch_shape=(2 * self.batch_size,) + self.image_shape, name="d_input")
         sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = self._sample_latent_inputs()
         sampled_latents_flat = list(sampled_latents.values())
         merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
@@ -53,8 +53,8 @@ class InfoGAN(object):
 
         # GENERATOR
         # --------------------------------------------------------------------
-        generation_params = generation_net(inputs=merged_samples,
-                                           image_shape=self.image_shape)
+        gen_net = GeneratorNet(image_shape)
+        generation_params = gen_net.apply(inputs=merged_samples)
 
         generated = Lambda(function=self._sample_image,
                            output_shape=self.image_shape,
@@ -68,33 +68,38 @@ class InfoGAN(object):
         # DISCRIMINATOR
         # --------------------------------------------------------------------
         # Disable the generator params while we define the discriminator
-        for layer in self.gen_model.layers:
-            layer.trainable = False
+        # for layer in self.gen_model.layers:
+            # layer.trainable = False
 
         # now append the real images to the generated ones
-        merged = Concatenate(axis=0, name="d_concat_fake_real")([generated, real_input])
+        # merged = Concatenate(axis=0, name="d_concat_fake_real")([generated, real_input])
 
         # the encoder shares the discriminator net
-        shared = discrimination_net(merged)
+        shared_net = SharedNet()
+        shared = shared_net.apply(d_input)
 
         # binary output for the GAN classification
-        disc_out = Dense(1, name="d_classif_layer")(shared)
-        disc_out = Activation(activation=K.sigmoid, name="d_classif_activ")(disc_out)
+        disc_last_dense = Dense(1, name="d_classif_layer")
+        disc_sigmoid = Activation(activation=K.sigmoid, name="d_classif_activ")
 
-        def disc_loss(targets, preds):
-            # targets are disregarded, as it's clear what they are
-            # the first batch_size many are zeros (generated)
-            # the second batch_size many are ones (real)
-            targets_generated = K.zeros(shape=(self.batch_size, 1))
-            targets_real = K.ones(shape=(self.batch_size, 1))
-            targets = K.concatenate([targets_generated, targets_real], axis=0)
+        disc_out = disc_last_dense(shared)
+        disc_out = disc_sigmoid(disc_out)
 
-            return binary_crossentropy(targets, preds)
+        # def disc_loss(targets, preds):
+            # # targets are disregarded, as it's clear what they are
+            # # the first batch_size many are zeros (generated)
+            # # the second batch_size many are ones (real)
+            # targets_generated = K.zeros(shape=(self.batch_size, 1))
+            # targets_real = K.ones(shape=(self.batch_size, 1))
+            # targets = K.concatenate([targets_generated, targets_real], axis=0)
+
+            # return binary_crossentropy(targets, preds)
 
         # compile the disc. part only at first
-        self.disc_model = Model(inputs=[real_input] + prior_param_inputs,
-                                outputs=disc_out, name="disc_model")
-        self.disc_model.compile(optimizer='adam', loss=disc_loss)
+        self.disc_model = Model(inputs=d_input,
+                                outputs=disc_out,
+                                name="disc_model")
+        self.disc_model.compile(optimizer='adam', loss=binary_crossentropy)
 
         # ENCODER:
         # --------------------------------------------------------------------
@@ -102,13 +107,14 @@ class InfoGAN(object):
         # which is a product of multiple factors (meaningful_dists)
 
         # unfreeze the generator
-        for layer in self.gen_model.layers:
-            layer.trainable = True
+        # for layer in self.gen_model.layers:
+            # layer.trainable = True
 
         # TODO: decide whether to freeze the discriminator
 
         # the encoder shares a common trunk with discriminator
-        encoder_net = Dense(128, name="e_dense_1")(shared)
+        shared_gen = shared_net.apply(generated)
+        encoder_net = Dense(128, name="e_dense_1")(shared_gen)
         encoder_net = BatchNormalization(name="e_dense_bn_1")(encoder_net)
         encoder_net = LeakyReLU(name="e_dense_activ_1")(encoder_net)
 
@@ -140,23 +146,32 @@ class InfoGAN(object):
 
             mi_losses.append(mi_loss)
 
-        self.encoder_model = Model(inputs=[real_input] + prior_param_inputs,
-                                   outputs=posterior_outputs, name="enc_model")
+        self.encoder_model = Model(inputs=prior_param_inputs,
+                                   outputs=posterior_outputs,
+                                   name="enc_model")
         self.encoder_model.compile(optimizer='adam', loss=mi_losses)
 
         # ENCODER + GENERATOR are trained together
         def gen_loss(targets, preds):
             # again, targets are not needed - ignore them
             # take only the generated samples
-            preds = preds[:self.batch_size]
+            # preds = preds[:self.batch_size]
 
             # define the standard disc GAN loss
             loss = K.sum(-K.log(preds))
 
             return loss
 
-        self.enc_gen_model = Model(inputs=[real_input] + prior_param_inputs,
-                                   outputs=[disc_out] + posterior_outputs,
+
+        # Make the discriminator not trainable
+        disc_last_dense.trainable = False
+        disc_sigmoid.trainable = False
+
+        gen_disc_out =  disc_last_dense(shared_gen)
+        gen_disc_out = disc_sigmoid(gen_disc_out)
+
+        self.enc_gen_model = Model(inputs=prior_param_inputs,
+                                   outputs=[gen_disc_out] + posterior_outputs,
                                    name="enc_gen_model")
         self.enc_gen_model.compile(optimizer='adam', loss=[gen_loss] + mi_losses)
 
@@ -195,7 +210,7 @@ class InfoGAN(object):
         param_dims = []
 
         for param_name, (dim, _) in dist.param_info().items():
-            param_input = Input(shape=(dim,),
+            param_input = Input(batch_shape=(self.batch_size, dim),
                                 name="g_prior_param_{}_{}".format(dist_name, param_name))
             param_inputs.append(param_input)
             param_dims.append(dim)
@@ -208,6 +223,7 @@ class InfoGAN(object):
                 param = merged_params[:, i:i + dim]
                 param_dict[param_names[j]] = param
                 i += dim
+
             return dist.sample(param_dict)
 
         if len(param_inputs) > 1:
@@ -215,6 +231,7 @@ class InfoGAN(object):
                                         name="g_concat_prior_params_{}".format(dist_name))(param_inputs)
         else:
             merged_params = param_inputs[0]
+
         sample = Lambda(function=sampling_fn,
                         name="g_sample_prior_{}".format(dist_name))(merged_params)
 
@@ -224,8 +241,10 @@ class InfoGAN(object):
         sizes = []
         for dist in self.meaningful_dists.values():
             sizes.append(dist.sample_size())
+
         for dist in self.noise_dists.values():
             sizes.append(dist.sample_size())
+
         return (sum(sizes),)
 
     def _sample_image(self, params):
@@ -240,6 +259,7 @@ class InfoGAN(object):
             out = Dense(dim, name="e_dense_{}_{}".format(dist_name, param))(layer)
             out = Activation(activation, name="e_activ_{}_{}".format(dist_name, param))(out)
             outputs[param] = out
+
         return outputs
 
     def _build_mi_loss(self, samples, dist, param_names_list, param_outputs_dims):
@@ -250,6 +270,7 @@ class InfoGAN(object):
             for param_name, dim in zip(param_names_list, param_outputs_dims):
                 param_dict[param_name] = preds[:, param_index:param_index + dim]
                 param_index += dim
+
             loss = dist.nll(samples, param_dict)
             return loss
         return mutual_info_loss
@@ -258,26 +279,33 @@ class InfoGAN(object):
         params = []
         for dist_name, param_name in zip(self.prior_param_dist_names, self.prior_param_names):
             params.append(self.prior_params[dist_name][param_name])
+
         return params
 
     def train_disc_pass(self, samples_batch):
-        dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
-            len(self.disc_model.outputs)
-        prior_params = self._assemble_prior_params()
-        return self.disc_model.train_on_batch([samples_batch] + prior_params,
-                                              dummy_targets)
+        # form the targets
+        targets_real = np.ones((self.batch_size,), dtype=np.float32)
+        targets_generated = np.zeros((self.batch_size,), dtype=np.float32)
+        targets = np.concatenate([targets_real, targets_generated], axis=0)
 
-    def train_gen_pass(self, samples_batch):
+        # form the real-generated batch
+        generated = self.generate()
+        batch = np.concatenate([samples_batch, generated], axis=0)
+
+        return self.disc_model.train_on_batch([batch],
+                                              [targets])
+
+    def train_gen_pass(self):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
             len(self.enc_gen_model.outputs)
         prior_params = self._assemble_prior_params()
-        return self.enc_gen_model.train_on_batch([samples_batch] + prior_params,
+        return self.enc_gen_model.train_on_batch(prior_params,
                                                  dummy_targets)
 
     def activation(self, index, samples):
         name = self._layer_names[index]
         prior_params = self._assemble_prior_params()
-        return name, self._layer_functions[name]([0, samples] + prior_params)
+        return name, self._layer_functions[name]([0] + prior_params)
 
     def generate(self):
         prior_params = self._assemble_prior_params()
