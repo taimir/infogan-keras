@@ -61,6 +61,7 @@ class InfoGAN(object):
                            output_shape=self.image_shape,
                            name="g_x_sampling")(generation_params)
 
+
         self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
         # NOTE: the loss here does not matter, it won't be used ...
         # the model is just compiled so that we can generate samples from it with .predict()
@@ -68,13 +69,6 @@ class InfoGAN(object):
 
         # DISCRIMINATOR
         # --------------------------------------------------------------------
-        # Disable the generator params while we define the discriminator
-        # for layer in self.gen_model.layers:
-        # layer.trainable = False
-
-        # now append the real images to the generated ones
-        # merged = Concatenate(axis=0, name="d_concat_fake_real")([generated, real_input])
-
         # the encoder shares the discriminator net
         shared_net = SharedNet()
         shared = shared_net.apply(d_input)
@@ -86,16 +80,6 @@ class InfoGAN(object):
         disc_out = disc_last_dense(shared)
         disc_out = disc_sigmoid(disc_out)
 
-        # def disc_loss(targets, preds):
-        # # targets are disregarded, as it's clear what they are
-        # # the first batch_size many are zeros (generated)
-        # # the second batch_size many are ones (real)
-        # targets_generated = K.zeros(shape=(self.batch_size, 1))
-        # targets_real = K.ones(shape=(self.batch_size, 1))
-        # targets = K.concatenate([targets_generated, targets_real], axis=0)
-
-            # return binary_crossentropy(targets, preds)
-
         # compile the disc. part only at first
         self.disc_model = Model(inputs=d_input,
                                 outputs=disc_out,
@@ -106,10 +90,6 @@ class InfoGAN(object):
         # --------------------------------------------------------------------
         # the encoder produces the statistics of the p(c | x) distribution
         # which is a product of multiple factors (meaningful_dists)
-
-        # unfreeze the generator
-        # for layer in self.gen_model.layers:
-        # layer.trainable = True
 
         # TODO: decide whether to freeze the discriminator
 
@@ -155,23 +135,17 @@ class InfoGAN(object):
                                    name="enc_model")
         self.encoder_model.compile(optimizer='adam', loss=mi_losses)
 
-        # ENCODER + GENERATOR are trained together
         def gen_loss(targets, preds):
             # again, targets are not needed - ignore them
-            # take only the generated samples
-            # preds = preds[:self.batch_size]
 
             # define the standard disc GAN loss
-            loss = -K.log(preds)
-
-            return loss
-
+            return -K.log(preds)
 
         # Make the discriminator part not trainable
         disc_last_dense.trainable = False
         disc_sigmoid.trainable = False
 
-        gen_disc_out =  disc_last_dense(shared_gen)
+        gen_disc_out = disc_last_dense(shared_gen)
         gen_disc_out = disc_sigmoid(gen_disc_out)
 
         losses = mi_losses.copy()
@@ -183,19 +157,12 @@ class InfoGAN(object):
         self.enc_gen_model.compile(optimizer='adam', loss=losses)
 
         # DEBUGGING
-        self._layer_functions = {}
-        self._layer_names = []
-        for layer in self.enc_gen_model.layers:
-            self._layer_names.append(layer.name)
-            self._layer_functions[layer.name] = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
-                                                           outputs=[layer.get_output_at(0)])
-            # disc prediction
-            self.disc_prediction = K.function(inputs=[K.learning_phase()] + self.disc_model.inputs,
-                                              outputs=[disc_out])
+        # disc prediction
+        self.disc_prediction = K.function(inputs=[K.learning_phase()] + self.disc_model.inputs,
+                                          outputs=[disc_out])
 
         self.gen_and_predict = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
                                           outputs=[gen_disc_out, -K.log(gen_disc_out), generated])
-
 
     def _sanity_check(self):
         prior_params = self._assemble_prior_params()
@@ -257,7 +224,8 @@ class InfoGAN(object):
             merged_params = param_inputs[0]
 
         sample = Lambda(function=sampling_fn,
-                        name="g_sample_prior_{}".format(dist_name))(merged_params)
+                        name="g_sample_prior_{}".format(dist_name),
+                        output_shape=(dist.sample_size(), ))(merged_params)
 
         return sample, param_names, param_inputs
 
@@ -325,11 +293,6 @@ class InfoGAN(object):
         prior_params = self._assemble_prior_params()
         return self.enc_gen_model.train_on_batch(prior_params,
                                                  dummy_targets)
-
-    def activation(self, index, samples):
-        name = self._layer_names[index]
-        prior_params = self._assemble_prior_params()
-        return name, self._layer_functions[name]([0] + prior_params)
 
     def generate(self):
         prior_params = self._assemble_prior_params()

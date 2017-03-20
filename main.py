@@ -12,7 +12,7 @@ from learn.models.model_trainer import ModelTrainer
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
-batch_size = 8
+batch_size = 2
 
 if __name__ == "__main__":
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -28,7 +28,8 @@ if __name__ == "__main__":
 
     meaningful_dists = {'c1': Categorical(n_classes=10),
                         'c2': IsotropicGaussian(dim=1),
-                        'c3': IsotropicGaussian(dim=1)}
+                        'c3': IsotropicGaussian(dim=1)
+                        }
     noise_dists = {'z': IsotropicGaussian(dim=30)}
     image_dist = Bernoulli()
     prior_params = {'c1': {'p_vals': np.ones((batch_size, 10), dtype=np.float32) / 10},

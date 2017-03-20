@@ -34,12 +34,12 @@ class GeneratorNet(Network):
         self.layers.append(BatchNormalization(name="g_dense_bn_2"))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_2"))
 
-        # I use the `th` orientation of theano
+        # # # I use the `th` orientation of theano
         self.layers.append(Reshape(target_shape=(32, image_shape[1] // 4, image_shape[2] // 4),
                                    name="g_reshape"))
 
-        # start applying the deconv layers
-        self.layers.append(Conv2DTranspose(filters=16, kernel_size=(4, 4),
+        # # start applying the deconv layers
+        self.layers.append(Conv2DTranspose(filters=16, kernel_size=(3, 3),
                                            strides=(2, 2),
                                            padding='same',
                                            data_format='channels_first',
@@ -47,9 +47,9 @@ class GeneratorNet(Network):
         self.layers.append(BatchNormalization(name="g_deconv_bn_1"))
         self.layers.append(Activation(activation=K.relu, name="g_deconv_activ_1"))
 
-        # TODO: if we'll be generating color images, this needs to produce
-        # a 256 * image_shape[0] number of channels
-        self.layers.append(Conv2DTranspose(filters=image_shape[0], kernel_size=(4, 4),
+        # # TODO: if we'll be generating color images, this needs to produce
+        # # a 256 * image_shape[0] number of channels
+        self.layers.append(Conv2DTranspose(filters=image_shape[0], kernel_size=(3, 3),
                                            strides=(2, 2),
                                            padding='same',
                                            data_format='channels_first',
@@ -70,15 +70,15 @@ class SharedNet(Network):
         self.layers = []
 
         self.layers.append(Conv2D(filters=8,
-                                  kernel_size=(5, 5),
+                                  kernel_size=(3, 3),
                                   padding="same",
                                   name="d_conv_1"))
         self.layers.append(LeakyReLU(name="d_conv_activ_1"))
 
         self.layers.append(Conv2D(filters=16,
-                                  kernel_size=(3, 3),
-                                  padding="same",
-                                  name="d_conv_2"))
+                                kernel_size=(3, 3),
+                                padding="same",
+                                name="d_conv_2"))
         self.layers.append(BatchNormalization(name="d_conv_bn_2"))
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 

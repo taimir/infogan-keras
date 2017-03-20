@@ -96,7 +96,8 @@ class Categorical(Distribution):
         else:
             from theano.tensor.shared_randomstreams import RandomStreams
             random = RandomStreams()
-            return random.multinomial(size=K.shape(p_vals)[:-1], n=1, pvals=p_vals)
+            return random.multinomial(size=K.shape(p_vals)[:-1], n=1, pvals=p_vals,
+                                      dtype='float32')
 
     def nll(self, samples, param_dict):
         """log_pdf
