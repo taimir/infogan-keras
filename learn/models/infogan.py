@@ -96,7 +96,7 @@ class InfoGAN(object):
         # the encoder shares a common trunk with discriminator
         shared_gen = shared_net.apply(generated)
         encoder_net = Dense(128, name="e_dense_1")(shared_gen)
-        encoder_net = BatchNormalization(name="e_dense_bn_1")(encoder_net)
+        # encoder_net = BatchNormalization(name="e_dense_bn_1")(encoder_net)
         encoder_net = LeakyReLU(name="e_dense_activ_1")(encoder_net)
 
         # add outputs for the parameters of all assumed meaninful distributions
@@ -154,7 +154,12 @@ class InfoGAN(object):
         self.enc_gen_model = Model(inputs=prior_param_inputs,
                                    outputs=[gen_disc_out] + posterior_outputs,
                                    name="enc_gen_model")
-        self.enc_gen_model.compile(optimizer='adam', loss=losses)
+
+        def debug_metric(true, preds):
+            return preds
+
+        self.enc_gen_model.compile(optimizer='adam', loss=losses,
+                                   metrics={disc_sigmoid.name: debug_metric})
 
         # DEBUGGING
         # disc prediction

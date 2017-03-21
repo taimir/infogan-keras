@@ -31,6 +31,7 @@ class ModelTrainer(object):
             if counter % 2 == 1:
                 gen_losses = self.model.train_gen_pass()
 
+                print("Gen names: {}".format(self.model.enc_gen_model.metrics_names))
                 print("Gen losses: {}".format(gen_losses) + "\tDisc loss: {}".format(disc_loss))
                 loss_logs = {}
                 loss_logs['discriminator_loss'] = disc_loss

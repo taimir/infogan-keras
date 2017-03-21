@@ -26,12 +26,12 @@ class GeneratorNet(Network):
 
         # a fully connected is needed to bring the inputs to a shape suitable for convolutions
         self.layers.append(Dense(units=128, name="g_dense_1"))
-        self.layers.append(BatchNormalization(name="g_dense_bn_1"))
+        # self.layers.append(BatchNormalization(name="g_dense_bn_1"))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_1"))
 
         self.layers.append(Dense(units=image_shape[1] // 4 * image_shape[2] // 4 * 32,
                                  name="g_dense_2"))
-        self.layers.append(BatchNormalization(name="g_dense_bn_2"))
+        # self.layers.append(BatchNormalization(name="g_dense_bn_2"))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_2"))
 
         # # # I use the `th` orientation of theano
@@ -44,7 +44,7 @@ class GeneratorNet(Network):
                                            padding='same',
                                            data_format='channels_first',
                                            name="g_deconv_1"))
-        self.layers.append(BatchNormalization(name="g_deconv_bn_1"))
+        # self.layers.append(BatchNormalization(name="g_deconv_bn_1"))
         self.layers.append(Activation(activation=K.relu, name="g_deconv_activ_1"))
 
         # # TODO: if we'll be generating color images, this needs to produce
@@ -79,12 +79,12 @@ class SharedNet(Network):
                                 kernel_size=(3, 3),
                                 padding="same",
                                 name="d_conv_2"))
-        self.layers.append(BatchNormalization(name="d_conv_bn_2"))
+        # self.layers.append(BatchNormalization(name="d_conv_bn_2"))
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 
         self.layers.append(Flatten(name="d_flatten"))
         self.layers.append(Dense(units=128, name="d_dense_1"))
-        self.layers.append(BatchNormalization(name="d_dense_bn_1"))
+        # self.layers.append(BatchNormalization(name="d_dense_bn_1"))
 
     def apply(self, inputs):
         network = inputs
