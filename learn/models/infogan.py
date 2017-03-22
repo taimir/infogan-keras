@@ -11,6 +11,7 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Model
 from keras.objectives import binary_crossentropy
 from keras.activations import linear
+from keras.optimizers import Adam
 
 from learn.networks.convnets import GeneratorNet, SharedNet
 
@@ -84,7 +85,7 @@ class InfoGAN(object):
         self.disc_model = Model(inputs=d_input,
                                 outputs=disc_out,
                                 name="disc_model")
-        self.disc_model.compile(optimizer='adam', loss=binary_crossentropy)
+        self.disc_model.compile(optimizer=Adam(lr=0.0002), loss=binary_crossentropy)
 
         # ENCODER:
         # --------------------------------------------------------------------
