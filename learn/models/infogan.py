@@ -91,9 +91,9 @@ class InfoGAN(object):
         # the encoder produces the statistics of the p(c | x) distribution
         # which is a product of multiple factors (meaningful_dists)
 
-        # TODO: decide whether to freeze the discriminator
-
         # the encoder shares a common trunk with discriminator
+        # TODO: decide whether to freeze the common trunk
+        shared_net.freeze()
         shared_gen = shared_net.apply(generated)
         encoder_net = Dense(128, name="e_dense_1")(shared_gen)
         # encoder_net = BatchNormalization(name="e_dense_bn_1")(encoder_net)

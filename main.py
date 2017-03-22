@@ -20,6 +20,9 @@ if __name__ == "__main__":
     x_train = x_train.reshape((-1, 1, 28, 28)) / 255
     x_test = x_test.reshape((-1, 1, 28, 28)) / 255
 
+    x_val = x_train[:1000]
+    x_train = x_train[1000:]
+
     datagen = ImageDataGenerator(data_format='channels_first')
     datagen.fit(x_train)
 
@@ -52,6 +55,6 @@ if __name__ == "__main__":
     plot_model(model.disc_model, to_file='disc_model.png')
     plot_model(model.encoder_model, to_file='encoder_model.png')
 
-    model_trainer = ModelTrainer(model, data_generator)
+    model_trainer = ModelTrainer(model, data_generator, x_val)
 
     model_trainer.train()

@@ -18,6 +18,13 @@ class Network(object):
     def apply(self, inputs):
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def freeze(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def unfreeze(self):
+        raise NotImplementedError
 
 class GeneratorNet(Network):
 
@@ -63,6 +70,13 @@ class GeneratorNet(Network):
 
         return network
 
+    def freeze(self):
+        for layer in self.layers:
+            layer.trainable = False
+
+    def unfreeze(self):
+        for layer in self.layers:
+            layer.trainable = True
 
 class SharedNet(Network):
 
@@ -93,4 +107,11 @@ class SharedNet(Network):
 
         return network
 
+    def freeze(self):
+        for layer in self.layers:
+            layer.trainable = False
+
+    def unfreeze(self):
+        for layer in self.layers:
+            layer.trainable = True
 

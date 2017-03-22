@@ -10,7 +10,7 @@ class ModelTrainer(object):
     ModelTrainer implements the training procedure of InfoGAN
     """
 
-    def __init__(self, gan_model, data_generator):
+    def __init__(self, gan_model, data_generator, val_x):
         """__init__
 
         :param gan_model - the already initialized gan model
@@ -21,6 +21,7 @@ class ModelTrainer(object):
 
         self.board = TensorBoard(histogram_freq=100)
         self.board.set_model(self.model.enc_gen_model)
+        self.board.validation_data = [val_x]
 
     def train(self):
         counter = 0
@@ -31,7 +32,7 @@ class ModelTrainer(object):
             gen_losses = self.model.train_gen_pass()
 
 
-            if counter % (10000 // self.model.batch_size) == 0:
+            if counter % (100 // self.model.batch_size) == 0:
                 print("Gen names: {}".format(self.model.enc_gen_model.metrics_names))
                 print("Gen losses: {}".format(gen_losses) + "\tDisc loss: {}".format(disc_loss))
                 loss_logs = {}
@@ -40,5 +41,5 @@ class ModelTrainer(object):
                     loss_logs[loss_name] = loss
                 self.board.on_epoch_end(epoch_count, loss_logs)
                 epoch_count += 1
-                self.model._sanity_check()
+                # self.model._sanity_check()
         self.board.on_train_end({})
