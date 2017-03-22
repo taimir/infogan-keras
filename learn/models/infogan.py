@@ -139,7 +139,8 @@ class InfoGAN(object):
             # again, targets are not needed - ignore them
 
             # define the standard disc GAN loss
-            return -K.log(preds)
+            # K.epsilon for numeric stability
+            return -K.log(preds + K.epsilon())
 
         # Make the discriminator part not trainable
         disc_last_dense.trainable = False

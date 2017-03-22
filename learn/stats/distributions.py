@@ -66,7 +66,8 @@ class IsotropicGaussian(Distribution):
         mean = param_dict['mean']
         std = param_dict['std']
         return K.sum(
-            0.5 * np.log(2 * np.pi) + K.log(std) + 0.5 * K.square((samples - mean) / std),
+            0.5 * np.log(2 * np.pi + K.epsilon()) + K.log(std) +
+            0.5 * K.square((samples - mean) / (std + K.epsilon())),
             axis=-1)
 
     def sample_size(self):
@@ -106,7 +107,7 @@ class Categorical(Distribution):
         """
         p_vals = param_dict['p_vals']
 
-        return -K.sum(samples * K.log(p_vals), axis=-1)
+        return -K.sum(samples * K.log(p_vals + K.epsilon()), axis=-1)
 
     def sample_size(self):
         return self.n_classes
@@ -134,7 +135,7 @@ class Bernoulli(Distribution):
         """
         p_vals = param_dict['p']
         return K.mean(-K.sum(
-            samples * K.log(p_vals) + (1 - samples) * K.log(1 - p_vals),
+            samples * K.log(p_vals + K.epsilon()) + (1 - samples) * K.log(1 - p_vals + K.epsilon()),
             axis=1))
 
     def sample_size(self):
