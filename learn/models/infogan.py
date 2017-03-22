@@ -97,7 +97,7 @@ class InfoGAN(object):
         shared_net.freeze()
         shared_gen = shared_net.apply(generated)
         encoder_net = Dense(128, name="e_dense_1")(shared_gen)
-        # encoder_net = BatchNormalization(name="e_dense_bn_1")(encoder_net)
+        encoder_net = BatchNormalization(name="e_dense_bn_1", axis=-1)(encoder_net)
         encoder_net = LeakyReLU(name="e_dense_activ_1")(encoder_net)
 
         # add outputs for the parameters of all assumed meaninful distributions

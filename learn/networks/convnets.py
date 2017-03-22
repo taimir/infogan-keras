@@ -39,7 +39,7 @@ class GeneratorNet(Network):
 
         self.layers.append(Dense(units=image_shape[1] // 4 * image_shape[2] // 4 * 64,
                                  name="g_dense_2"))
-        self.layers.append(BatchNormalization(name="g_dense_bn_2"), axis=-1)
+        self.layers.append(BatchNormalization(name="g_dense_bn_2", axis=-1))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_2"))
 
         # # # I use the `th` orientation of theano
@@ -52,7 +52,7 @@ class GeneratorNet(Network):
                                            padding='same',
                                            data_format='channels_first',
                                            name="g_deconv_1"))
-        self.layers.append(BatchNormalization(name="g_deconv_bn_1"), axis=1)
+        self.layers.append(BatchNormalization(name="g_deconv_bn_1", axis=1))
         self.layers.append(Activation(activation=K.relu, name="g_deconv_activ_1"))
 
         # # TODO: if we'll be generating color images, this needs to produce
@@ -95,12 +95,12 @@ class SharedNet(Network):
                                   kernel_size=(3, 3),
                                   padding="same",
                                   name="d_conv_2"))
-        self.layers.append(BatchNormalization(name="d_conv_bn_2"), axis=1)
+        self.layers.append(BatchNormalization(name="d_conv_bn_2", axis=1))
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 
         self.layers.append(Flatten(name="d_flatten"))
         self.layers.append(Dense(units=256, name="d_dense_1"))
-        self.layers.append(BatchNormalization(name="d_dense_bn_1"), axis=-1)
+        self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1))
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
 
     def apply(self, inputs):
