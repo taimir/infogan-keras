@@ -4,16 +4,15 @@ Implementation of the InfoGAN network
 
 import numpy as np
 import keras.backend as K
-from keras.layers import Input,  Dense, BatchNormalization, Activation
+from keras.layers import Input,  Dense, Activation
 from keras.layers.merge import Concatenate
 from keras.layers.core import Lambda
-from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Model
 from keras.objectives import binary_crossentropy
 from keras.activations import linear
 from keras.optimizers import Adam
 
-from learn.networks.convnets import GeneratorNet, SharedNet
+from learn.networks.convnets import GeneratorNet, SharedNet, EncoderTop, DiscriminatorTop
 
 
 class InfoGAN(object):
@@ -25,8 +24,7 @@ class InfoGAN(object):
     """
 
     def __init__(self, batch_size, image_shape, noise_dists,
-                 meaningful_dists, image_dist, prior_params
-                 ):
+                 meaningful_dists, image_dist, prior_params):
         """__init__
 
         :param batch_size - number of real samples passed at each iteration
@@ -45,8 +43,9 @@ class InfoGAN(object):
         self.prior_params = prior_params
 
         real_input = Input(shape=self.image_shape, name="d_input")
-        sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = self._sample_latent_inputs()
-        sampled_latents_flat = list(sampled_latents.values())
+        self.sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = \
+            self._sample_latent_inputs()
+        sampled_latents_flat = list(self.sampled_latents.values())
         merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
 
         self.prior_param_inputs = prior_param_inputs
@@ -62,31 +61,28 @@ class InfoGAN(object):
                            output_shape=self.image_shape,
                            name="g_x_sampling")(generation_params)
 
-
         self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
+
         # NOTE: the loss here does not matter, it won't be used ...
         # the model is just compiled so that we can generate samples from it with .predict()
         self.gen_model.compile(optimizer='adam', loss=binary_crossentropy)
 
         # DISCRIMINATOR
         # --------------------------------------------------------------------
-        # free the generator layers:
+        # freeze the generator layers:
         gen_net.freeze()
 
         # the encoder shares the discriminator net
         shared_net = SharedNet()
-        disc_real_trunk = shared_net.apply(real_input)
-        disc_generated_trunk = shared_net.apply(generated)
+        real_trunk = shared_net.apply(real_input)
+        generated_trunk = shared_net.apply(generated)
 
         # binary output for the GAN classification
-        disc_last_dense = Dense(1, name="d_classif_layer")
-        disc_sigmoid = Activation(activation=K.sigmoid, name="d_classif_activ")
+        disc_top = DiscriminatorTop()
 
-        disc_out_gen = disc_last_dense(disc_generated_trunk)
-        disc_out_gen = disc_sigmoid(disc_out_gen)
+        disc_out_gen = disc_top.apply(generated_trunk)
 
-        disc_out_real = disc_last_dense(disc_real_trunk)
-        disc_out_real = disc_sigmoid(disc_out_real)
+        disc_out_real = disc_top.apply(real_trunk)
 
         disc_out = Concatenate(axis=0)([disc_out_real, disc_out_gen])
 
@@ -94,7 +90,6 @@ class InfoGAN(object):
             real_scores = disc_out[:self.batch_size]
             generated_scores = disc_out[self.batch_size:]
             return -K.log(real_scores + K.epsilon()) - K.log(1 - generated_scores + K.epsilon())
-
 
         # compile the disc. part only at first
         self.disc_model = Model(inputs=[real_input] + prior_param_inputs,
@@ -104,57 +99,39 @@ class InfoGAN(object):
 
         # unfreeze the gen model
         gen_net.unfreeze()
-        # free the shared net
-        shared_net.freeze()
+
+        # TODO: decide whether to freeze the shared net
+        # shared_net.freeze()
+
         # Make the discriminator part not trainable
-        disc_last_dense.trainable = False
-        disc_sigmoid.trainable = False
+        disc_top.freeze()
 
         # ENCODER:
         # --------------------------------------------------------------------
         # the encoder produces the statistics of the p(c | x) distribution
         # which is a product of multiple factors (meaningful_dists)
 
-        # the encoder shares a common trunk with discriminator
-        encoder_net = Dense(128, name="e_dense_1")(disc_generated_trunk)
-        encoder_net = BatchNormalization(name="e_dense_bn_1", axis=-1)(encoder_net)
-        encoder_net = LeakyReLU(name="e_dense_activ_1")(encoder_net)
+        encoder_top = EncoderTop()
 
-        # add outputs for the parameters of all assumed meaninful distributions
-        posterior_outputs = []
-        mi_losses = {}
-        for dist_name, dist in meaningful_dists.items():
-            param_outputs_dict = self._add_dist_outputs(dist_name, dist, encoder_net)
-            param_outputs_list = []
-            param_names_list = []
-            param_outputs_dims = []
+        encoder_last = encoder_top.apply(real_trunk)
 
-            for param_name, (dim, _) in dist.param_info().items():
-                param_outputs_list.append(param_outputs_dict[param_name])
-                param_outputs_dims.append(dim)
-                param_names_list.append(param_name)
+        posterior_outputs, _ = self._add_enc_outputs_and_losses(encoder_last, add_losses=False)
 
-            loss_output_name = "e_loss_output_{}".format(dist_name)
-            if len(param_outputs_list) > 1:
-                merged_params = Concatenate(axis=-1,
-                                            name=loss_output_name)(param_outputs_list)
-            else:
-                merged_params = param_outputs_list[0]
-                merged_params = Activation(activation=linear,
-                                           name=loss_output_name)(merged_params)
-
-            posterior_outputs.append(merged_params)
-
-            # build the mi_loss
-            samples = sampled_latents[dist_name]
-            mi_loss = self._build_mi_loss(samples, dist, param_names_list, param_outputs_dims)
-
-            mi_losses[loss_output_name] = mi_loss
-
-        self.encoder_model = Model(inputs=prior_param_inputs,
+        self.encoder_model = Model(inputs=real_input,
                                    outputs=posterior_outputs,
                                    name="enc_model")
-        self.encoder_model.compile(optimizer='adam', loss=mi_losses)
+
+        # NOTE: Here the loss does not matter, we'll only use this model for predictions
+        # (encoding of real data to latent space)
+        self.encoder_model.compile(optimizer='adam', loss="mean_squared_error")
+
+        # ENCODER & GENERATOR & DISCRIMINATOR:
+        # --------------------------------------------------------------------
+        # during training they are all used together
+
+        encoder_last = encoder_top.apply(generated_trunk)
+
+        posterior_outputs, mi_losses = self._add_enc_outputs_and_losses(encoder_last)
 
         def gen_loss(targets, preds):
             # again, targets are not needed - ignore them
@@ -164,17 +141,13 @@ class InfoGAN(object):
             return -K.log(preds + K.epsilon())
 
         losses = mi_losses.copy()
-        losses[disc_sigmoid.name] = gen_loss
+        losses[disc_top.layers[-1].name] = gen_loss
 
         self.enc_gen_model = Model(inputs=prior_param_inputs,
                                    outputs=[disc_out_gen] + posterior_outputs,
                                    name="enc_gen_model")
 
-        def debug_metric(true, preds):
-            return preds
-
-        self.enc_gen_model.compile(optimizer='adam', loss=losses,
-                                   metrics={disc_sigmoid.name: debug_metric})
+        self.enc_gen_model.compile(optimizer='adam', loss=losses)
 
         # DEBUGGING
         # disc prediction
@@ -183,16 +156,6 @@ class InfoGAN(object):
 
         self.gen_and_predict = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
                                           outputs=[disc_out_gen, -K.log(disc_out_gen), generated])
-
-    def _sanity_check(self):
-        prior_params = self._assemble_prior_params()
-
-        gen_score, log_vals, samples = self.gen_and_predict([0] + prior_params)
-        disc_score = self.disc_prediction([0] + [samples])
-        print(gen_score)
-        print(log_vals)
-        print(disc_score)
-        assert np.all(np.equal(gen_score, disc_score))
 
     def _sample_latent_inputs(self):
         samples = {}
@@ -221,7 +184,7 @@ class InfoGAN(object):
         param_dims = []
 
         for param_name, (dim, _) in dist.param_info().items():
-            param_input = Input(batch_shape=(self.batch_size, dim),
+            param_input = Input(shape=(dim, ),
                                 name="g_prior_param_{}_{}".format(dist_name, param_name))
             param_inputs.append(param_input)
             param_dims.append(dim)
@@ -264,6 +227,41 @@ class InfoGAN(object):
         sampled_image = self.image_dist.sample(params_dict)
         return sampled_image
 
+    def _add_enc_outputs_and_losses(self, layer, add_losses=True):
+        # add outputs for the parameters of all assumed meaninful distributions
+        posterior_outputs = []
+        mi_losses = {}
+        for dist_name, dist in self.meaningful_dists.items():
+            param_outputs_dict = self._add_dist_outputs(dist_name, dist, layer)
+            param_outputs_list = []
+            param_names_list = []
+            param_outputs_dims = []
+
+            for param_name, (dim, _) in dist.param_info().items():
+                param_outputs_list.append(param_outputs_dict[param_name])
+                param_outputs_dims.append(dim)
+                param_names_list.append(param_name)
+
+            loss_output_name = "e_loss_output_{}".format(dist_name)
+            if len(param_outputs_list) > 1:
+                merged_params = Concatenate(axis=-1,
+                                            name=loss_output_name)(param_outputs_list)
+            else:
+                merged_params = param_outputs_list[0]
+                merged_params = Activation(activation=linear,
+                                           name=loss_output_name)(merged_params)
+
+            posterior_outputs.append(merged_params)
+
+            # build the mi_loss
+            if add_losses:
+                samples = self.sampled_latents[dist_name]
+                mi_loss = self._build_mi_loss(samples, dist, param_names_list, param_outputs_dims)
+
+                mi_losses[loss_output_name] = mi_loss
+
+        return posterior_outputs, mi_losses
+
     def _add_dist_outputs(self, dist_name, dist, layer):
         info = dist.param_info()
         outputs = {}
@@ -294,6 +292,16 @@ class InfoGAN(object):
 
         return params
 
+    def _sanity_check(self):
+        prior_params = self._assemble_prior_params()
+
+        gen_score, log_vals, samples = self.gen_and_predict([0] + prior_params)
+        disc_score = self.disc_prediction([0] + [samples])
+        print(gen_score)
+        print(log_vals)
+        print(disc_score)
+        assert np.all(np.equal(gen_score, disc_score))
+
     def train_disc_pass(self, samples_batch):
         dummy_targets = np.ones((self.batch_size,), dtype=np.float32)
         prior_params = self._assemble_prior_params()
@@ -310,3 +318,6 @@ class InfoGAN(object):
     def generate(self):
         prior_params = self._assemble_prior_params()
         return self.gen_model.predict(prior_params, batch_size=self.batch_size)
+
+    def encode(self, samples):
+        return self.encoder_model.predict(samples, batch_size=self.batch_size)

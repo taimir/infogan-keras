@@ -14,17 +14,22 @@ class Network(object):
 
     __metaclass__ = abc.ABCMeta
 
-    @abc.abstractmethod
+    def __init__(self):
+        self.layers = []
+
     def apply(self, inputs):
-        raise NotImplementedError
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
 
-    @abc.abstractmethod
     def freeze(self):
-        raise NotImplementedError
+        for layer in self.layers:
+            layer.trainable = False
 
-    @abc.abstractmethod
     def unfreeze(self):
-        raise NotImplementedError
+        for layer in self.layers:
+            layer.trainable = True
 
 
 class GeneratorNet(Network):
@@ -33,7 +38,7 @@ class GeneratorNet(Network):
         self.layers = []
 
         # a fully connected is needed to bring the inputs to a shape suitable for convolutions
-        self.layers.append(Dense(units=256, name="g_dense_1"))
+        self.layers.append(Dense(units=512, name="g_dense_1"))
         self.layers.append(BatchNormalization(name="g_dense_bn_1", axis=-1))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_1"))
 
@@ -64,21 +69,6 @@ class GeneratorNet(Network):
                                            name="g_deconv_2"))
         self.layers.append(Activation(activation=K.sigmoid, name="g_deconv_activ_2"))
 
-    def apply(self, inputs):
-        network = inputs
-        for layer in self.layers:
-            network = layer(network)
-
-        return network
-
-    def freeze(self):
-        for layer in self.layers:
-            layer.trainable = False
-
-    def unfreeze(self):
-        for layer in self.layers:
-            layer.trainable = True
-
 
 class SharedNet(Network):
 
@@ -99,21 +89,25 @@ class SharedNet(Network):
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 
         self.layers.append(Flatten(name="d_flatten"))
-        self.layers.append(Dense(units=256, name="d_dense_1"))
+        self.layers.append(Dense(units=512, name="d_dense_1"))
         self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1))
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
 
-    def apply(self, inputs):
-        network = inputs
-        for layer in self.layers:
-            network = layer(network)
 
-        return network
+class EncoderTop(Network):
 
-    def freeze(self):
-        for layer in self.layers:
-            layer.trainable = False
+    def __init__(self):
+        self.layers = []
 
-    def unfreeze(self):
-        for layer in self.layers:
-            layer.trainable = True
+        self.layers.append(Dense(512, name="e_dense_1"))
+        self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1))
+        self.layers.append(LeakyReLU(name="e_dense_activ_1"))
+
+
+class DiscriminatorTop(Network):
+
+    def __init__(self):
+        self.layers = []
+
+        self.layers.append(Dense(1, name="d_classif_layer"))
+        self.layers.append(Activation(activation=K.sigmoid, name="d_classif_activ"))

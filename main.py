@@ -1,22 +1,22 @@
 """
 Example implementation of InfoGAN
 """
-# import os
-# import tensorflow as tf
-# import keras.backend.tensorflow_backend as KTF
+import os
+import tensorflow as tf
+import keras.backend.tensorflow_backend as KTF
 
-# def get_session(gpu_fraction=0.9):
-    # num_threads = os.environ.get('OMP_NUM_THREADS')
-    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
-                                # allow_growth=True)
+def get_session(gpu_fraction=0.9):
+    num_threads = os.environ.get('OMP_NUM_THREADS')
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
+                                allow_growth=True)
 
-    # if num_threads:
-        # return tf.Session(config=tf.ConfigProto(
-            # gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
-    # else:
-        # return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    if num_threads:
+        return tf.Session(config=tf.ConfigProto(
+            gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
+    else:
+        return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
-# KTF.set_session(get_session())
+KTF.set_session(get_session())
 
 import numpy as np
 from keras.datasets import mnist
@@ -46,16 +46,16 @@ if __name__ == "__main__":
         return datagen.flow(x_train, batch_size=batch_size)
 
     meaningful_dists = {'c1': Categorical(n_classes=10),
-                        # 'c2': IsotropicGaussian(dim=1),
-                        # 'c3': IsotropicGaussian(dim=1)
+                        'c2': IsotropicGaussian(dim=1),
+                        'c3': IsotropicGaussian(dim=1)
                         }
     noise_dists = {'z': IsotropicGaussian(dim=30)}
     image_dist = Bernoulli()
     prior_params = {'c1': {'p_vals': np.ones((batch_size, 10), dtype=np.float32) / 10},
-                    # 'c2': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
-                           # 'std': np.ones((batch_size, 1), dtype=np.float32)},
-                    # 'c3': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
-                           # 'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    'c2': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
+                           'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    'c3': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
+                           'std': np.ones((batch_size, 1), dtype=np.float32)},
                     'z': {'mean': np.zeros((batch_size, 30), dtype=np.float32),
                           'std': np.ones((batch_size, 30), dtype=np.float32)}
                     }

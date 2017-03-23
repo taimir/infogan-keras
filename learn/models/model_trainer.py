@@ -20,7 +20,7 @@ class ModelTrainer(object):
         self.model = gan_model
         self.data_generator = data_generator
 
-        self.board = TensorBoard(histogram_freq=100)
+        self.board = TensorBoard(histogram_freq=10)
         self.board.set_model(self.model.disc_model)
 
         prior_params = self.model._assemble_prior_params()
