@@ -1,7 +1,8 @@
 """
 Trainer for the InfoGan
 """
-
+import numpy as np
+import scipy.misc
 from keras.callbacks import TensorBoard
 
 
@@ -21,7 +22,10 @@ class ModelTrainer(object):
 
         self.board = TensorBoard(histogram_freq=100)
         self.board.set_model(self.model.disc_model)
-        self.board.validation_data = [val_x]
+
+        prior_params = self.model._assemble_prior_params()
+        prior_params = [np.repeat(a=param[[0]], repeats=val_x.shape[0], axis=0) for param in prior_params]
+        self.board.validation_data = [val_x] + prior_params
 
     def train(self):
         epoch_count = 0
@@ -44,5 +48,14 @@ class ModelTrainer(object):
                     self.board.on_epoch_end(epoch_count, loss_logs)
                     epoch_count += 1
                     # self.model._sanity_check()
+
+                    # save the model weights
+                    self.model.disc_model.save_weights("disc_model.hdf5", overwrite=True)
+                    self.model.enc_gen_model.save_weights("enc_gen_model.hdf5", overwrite=True)
+
+                    images = self.model.generate()[:10, 0]
+                    for i, image in enumerate(images):
+                        scipy.misc.imsave("image_{}.png".format(i), image)
+
                     break
         self.board.on_train_end({})
