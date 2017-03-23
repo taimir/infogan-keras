@@ -44,7 +44,7 @@ class InfoGAN(object):
         self.image_dist = image_dist
         self.prior_params = prior_params
 
-        d_input = Input(shape=self.image_shape, name="d_input")
+        real_input = Input(shape=self.image_shape, name="d_input")
         sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = self._sample_latent_inputs()
         sampled_latents_flat = list(sampled_latents.values())
         merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
@@ -70,22 +70,45 @@ class InfoGAN(object):
 
         # DISCRIMINATOR
         # --------------------------------------------------------------------
+        # free the generator layers:
+        gen_net.freeze()
+
         # the encoder shares the discriminator net
         shared_net = SharedNet()
-        shared = shared_net.apply(d_input)
+        disc_real_trunk = shared_net.apply(real_input)
+        disc_generated_trunk = shared_net.apply(generated)
 
         # binary output for the GAN classification
         disc_last_dense = Dense(1, name="d_classif_layer")
         disc_sigmoid = Activation(activation=K.sigmoid, name="d_classif_activ")
 
-        disc_out = disc_last_dense(shared)
-        disc_out = disc_sigmoid(disc_out)
+        disc_out_gen = disc_last_dense(disc_generated_trunk)
+        disc_out_gen = disc_sigmoid(disc_out_gen)
+
+        disc_out_real = disc_last_dense(disc_real_trunk)
+        disc_out_real = disc_sigmoid(disc_out_real)
+
+        disc_out = Concatenate(axis=0)([disc_out_real, disc_out_gen])
+
+        def disc_loss(targets, preds):
+            real_scores = disc_out[:self.batch_size]
+            generated_scores = disc_out[self.batch_size:]
+            return -K.log(real_scores + K.epsilon()) - K.log(1 - generated_scores + K.epsilon())
+
 
         # compile the disc. part only at first
-        self.disc_model = Model(inputs=d_input,
+        self.disc_model = Model(inputs=[real_input] + prior_param_inputs,
                                 outputs=disc_out,
                                 name="disc_model")
-        self.disc_model.compile(optimizer=Adam(lr=0.0002), loss=binary_crossentropy)
+        self.disc_model.compile(optimizer=Adam(lr=0.0002), loss=disc_loss)
+
+        # unfreeze the gen model
+        gen_net.unfreeze()
+        # free the shared net
+        shared_net.freeze()
+        # Make the discriminator part not trainable
+        disc_last_dense.trainable = False
+        disc_sigmoid.trainable = False
 
         # ENCODER:
         # --------------------------------------------------------------------
@@ -93,10 +116,7 @@ class InfoGAN(object):
         # which is a product of multiple factors (meaningful_dists)
 
         # the encoder shares a common trunk with discriminator
-        # TODO: decide whether to freeze the common trunk
-        shared_net.freeze()
-        shared_gen = shared_net.apply(generated)
-        encoder_net = Dense(128, name="e_dense_1")(shared_gen)
+        encoder_net = Dense(128, name="e_dense_1")(disc_generated_trunk)
         encoder_net = BatchNormalization(name="e_dense_bn_1", axis=-1)(encoder_net)
         encoder_net = LeakyReLU(name="e_dense_activ_1")(encoder_net)
 
@@ -143,18 +163,11 @@ class InfoGAN(object):
             # K.epsilon for numeric stability
             return -K.log(preds + K.epsilon())
 
-        # Make the discriminator part not trainable
-        disc_last_dense.trainable = False
-        disc_sigmoid.trainable = False
-
-        gen_disc_out = disc_last_dense(shared_gen)
-        gen_disc_out = disc_sigmoid(gen_disc_out)
-
         losses = mi_losses.copy()
         losses[disc_sigmoid.name] = gen_loss
 
         self.enc_gen_model = Model(inputs=prior_param_inputs,
-                                   outputs=[gen_disc_out] + posterior_outputs,
+                                   outputs=[disc_out_gen] + posterior_outputs,
                                    name="enc_gen_model")
 
         def debug_metric(true, preds):
@@ -169,7 +182,7 @@ class InfoGAN(object):
                                           outputs=[disc_out])
 
         self.gen_and_predict = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
-                                          outputs=[gen_disc_out, -K.log(gen_disc_out), generated])
+                                          outputs=[disc_out_gen, -K.log(disc_out_gen), generated])
 
     def _sanity_check(self):
         prior_params = self._assemble_prior_params()
@@ -282,17 +295,10 @@ class InfoGAN(object):
         return params
 
     def train_disc_pass(self, samples_batch):
-        # form the targets
-        targets_real = np.ones((self.batch_size,), dtype=np.float32)
-        targets_generated = np.zeros((self.batch_size,), dtype=np.float32)
-        targets = np.concatenate([targets_real, targets_generated], axis=0)
-
-        # form the real-generated batch
-        generated = self.generate()
-        batch = np.concatenate([samples_batch, generated], axis=0)
-
-        return self.disc_model.train_on_batch([batch],
-                                              [targets])
+        dummy_targets = np.ones((self.batch_size,), dtype=np.float32)
+        prior_params = self._assemble_prior_params()
+        return self.disc_model.train_on_batch([samples_batch] + prior_params,
+                                              dummy_targets)
 
     def train_gen_pass(self):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
