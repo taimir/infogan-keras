@@ -101,7 +101,7 @@ class InfoGAN(object):
         gen_net.unfreeze()
 
         # TODO: decide whether to freeze the shared net
-        # shared_net.freeze()
+        shared_net.freeze()
 
         # Make the discriminator part not trainable
         disc_top.freeze()
