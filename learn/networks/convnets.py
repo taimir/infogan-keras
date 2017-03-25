@@ -38,7 +38,7 @@ class GeneratorNet(Network):
         self.layers = []
 
         # a fully connected is needed to bring the inputs to a shape suitable for convolutions
-        self.layers.append(Dense(units=128, name="g_dense_1"))
+        self.layers.append(Dense(units=512, name="g_dense_1"))
         self.layers.append(BatchNormalization(name="g_dense_bn_1", axis=-1))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_1"))
 
@@ -89,7 +89,7 @@ class SharedNet(Network):
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 
         self.layers.append(Flatten(name="d_flatten"))
-        self.layers.append(Dense(units=128, name="d_dense_1"))
+        self.layers.append(Dense(units=512, name="d_dense_1"))
         self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1))
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
 
@@ -99,7 +99,7 @@ class EncoderTop(Network):
     def __init__(self):
         self.layers = []
 
-        self.layers.append(Dense(128, name="e_dense_1"))
+        self.layers.append(Dense(512, name="e_dense_1"))
         self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1))
         self.layers.append(LeakyReLU(name="e_dense_activ_1"))
 

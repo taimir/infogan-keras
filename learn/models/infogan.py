@@ -42,7 +42,7 @@ class InfoGAN(object):
         self.image_dist = image_dist
         self.prior_params = prior_params
 
-        real_input = Input(shape=self.image_shape, name="d_input")
+        self.real_input = Input(shape=self.image_shape, name="d_input")
         self.sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = \
             self._sample_latent_inputs()
         sampled_latents_flat = list(self.sampled_latents.values())
@@ -60,6 +60,7 @@ class InfoGAN(object):
         generated = Lambda(function=self._sample_image,
                            output_shape=self.image_shape,
                            name="g_x_sampling")(generation_params)
+        self.tensor_generated = generated
 
         self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
 
@@ -74,7 +75,7 @@ class InfoGAN(object):
 
         # the encoder shares the discriminator net
         shared_net = SharedNet()
-        real_trunk = shared_net.apply(real_input)
+        real_trunk = shared_net.apply(self.real_input)
         generated_trunk = shared_net.apply(generated)
 
         # binary output for the GAN classification
@@ -92,7 +93,7 @@ class InfoGAN(object):
             return -K.log(real_scores + K.epsilon()) - K.log(1 - generated_scores + K.epsilon())
 
         # compile the disc. part only at first
-        self.disc_model = Model(inputs=[real_input] + prior_param_inputs,
+        self.disc_model = Model(inputs=[self.real_input] + prior_param_inputs,
                                 outputs=disc_out,
                                 name="disc_model")
         self.disc_model.compile(optimizer=Adam(lr=0.0002), loss=disc_loss)
@@ -115,10 +116,10 @@ class InfoGAN(object):
 
         encoder_last = encoder_top.apply(real_trunk)
 
-        posterior_outputs, _ = self._add_enc_outputs_and_losses(encoder_last, add_losses=False)
+        self.posterior_outputs, _ = self._add_enc_outputs_and_losses(encoder_last, add_losses=False)
 
-        self.encoder_model = Model(inputs=real_input,
-                                   outputs=posterior_outputs,
+        self.encoder_model = Model(inputs=self.real_input,
+                                   outputs=self.posterior_outputs,
                                    name="enc_model")
 
         # NOTE: Here the loss does not matter, we'll only use this model for predictions

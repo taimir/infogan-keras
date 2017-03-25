@@ -37,6 +37,7 @@ if __name__ == "__main__":
     x_test = x_test.reshape((-1, 1, 28, 28)) / 255
 
     x_val = x_train[:1000]
+    y_val = y_train[:1000]
     x_train = x_train[1000:]
 
     datagen = ImageDataGenerator(data_format='channels_first')
@@ -46,16 +47,16 @@ if __name__ == "__main__":
         return datagen.flow(x_train, batch_size=batch_size)
 
     meaningful_dists = {'c1': Categorical(n_classes=10),
-                        'c2': IsotropicGaussian(dim=1),
-                        'c3': IsotropicGaussian(dim=1)
+                        # 'c2': IsotropicGaussian(dim=1),
+                        # 'c3': IsotropicGaussian(dim=1)
                         }
     noise_dists = {'z': IsotropicGaussian(dim=30)}
     image_dist = Bernoulli()
     prior_params = {'c1': {'p_vals': np.ones((batch_size, 10), dtype=np.float32) / 10},
-                    'c2': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
-                           'std': np.ones((batch_size, 1), dtype=np.float32)},
-                    'c3': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
-                           'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    # 'c2': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
+                           # 'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    # 'c3': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
+                           # 'std': np.ones((batch_size, 1), dtype=np.float32)},
                     'z': {'mean': np.zeros((batch_size, 30), dtype=np.float32),
                           'std': np.ones((batch_size, 30), dtype=np.float32)}
                     }
@@ -71,6 +72,6 @@ if __name__ == "__main__":
     plot_model(model.disc_model, to_file='disc_model.png')
     plot_model(model.encoder_model, to_file='encoder_model.png')
 
-    model_trainer = ModelTrainer(model, data_generator, x_val)
+    model_trainer = ModelTrainer(model, data_generator, x_val, y_val)
 
     model_trainer.train()
