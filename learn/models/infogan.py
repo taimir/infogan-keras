@@ -8,7 +8,6 @@ from keras.layers import Input,  Dense, Activation
 from keras.layers.merge import Concatenate
 from keras.layers.core import Lambda
 from keras.models import Model
-from keras.objectives import binary_crossentropy
 from keras.activations import linear
 from keras.optimizers import Adam
 
@@ -42,121 +41,136 @@ class InfoGAN(object):
         self.image_dist = image_dist
         self.prior_params = prior_params
 
-        self.real_input = Input(shape=self.image_shape, name="d_input")
-        self.sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = \
+        # GENERATION BRANCH
+        # --------------------------------------------------------------------
+        sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = \
             self._sample_latent_inputs()
-        sampled_latents_flat = list(self.sampled_latents.values())
-        merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
-
+        self.sampled_latents = sampled_latents
         self.prior_param_inputs = prior_param_inputs
         self.prior_param_names = prior_param_names
         self.prior_param_dist_names = prior_param_dist_names
 
-        # GENERATOR
-        # --------------------------------------------------------------------
+        sampled_latents_flat = list(self.sampled_latents.values())
+        merged_samples = Concatenate(axis=-1, name="g_concat_prior_samples")(sampled_latents_flat)
+
         gen_net = GeneratorNet(image_shape)
         generation_params = gen_net.apply(inputs=merged_samples)
 
         generated = Lambda(function=self._sample_image,
                            output_shape=self.image_shape,
                            name="g_x_sampling")(generation_params)
+        # used later by tensorboard
         self.tensor_generated = generated
 
-        self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
-
-        # NOTE: the loss here does not matter, it won't be used ...
-        # the model is just compiled so that we can generate samples from it with .predict()
-        self.gen_model.compile(optimizer='adam', loss=binary_crossentropy)
-
-        # DISCRIMINATOR
-        # --------------------------------------------------------------------
-        # freeze the generator layers:
-        gen_net.freeze()
-
-        # the encoder shares the discriminator net
+        # shared network for the discriminator & encoder
         shared_net = SharedNet()
-        real_trunk = shared_net.apply(self.real_input)
-        generated_trunk = shared_net.apply(generated)
-
-        # binary output for the GAN classification
         disc_top = DiscriminatorTop()
-
-        disc_out_gen = disc_top.apply(generated_trunk)
-
-        disc_out_real = disc_top.apply(real_trunk)
-
-        disc_out = Concatenate(axis=0)([disc_out_real, disc_out_gen])
-
-        def disc_loss(targets, preds):
-            real_scores = disc_out[:self.batch_size]
-            generated_scores = disc_out[self.batch_size:]
-            return -K.log(real_scores + K.epsilon()) - K.log(1 - generated_scores + K.epsilon())
-
-        # compile the disc. part only at first
-        self.disc_model = Model(inputs=[self.real_input] + prior_param_inputs,
-                                outputs=disc_out,
-                                name="disc_model")
-        self.disc_model.compile(optimizer=Adam(lr=0.0002), loss=disc_loss)
-
-        # unfreeze the gen model
-        gen_net.unfreeze()
-
-        # TODO: decide whether to freeze the shared net
-        shared_net.freeze()
-
-        # Make the discriminator part not trainable
-        disc_top.freeze()
-
-        # ENCODER:
-        # --------------------------------------------------------------------
-        # the encoder produces the statistics of the p(c | x) distribution
-        # which is a product of multiple factors (meaningful_dists)
-
         encoder_top = EncoderTop()
 
-        encoder_last = encoder_top.apply(real_trunk)
+        # GEN DISC & ENCODER BRANCH
+        # --------------------------------------------------------------------
+        gen_shared_trunk = shared_net.apply(generated)
 
-        self.posterior_outputs, _ = self._add_enc_outputs_and_losses(encoder_last, add_losses=False)
+        # discriminator
+        disc_last_gen = disc_top.apply(gen_shared_trunk)
+        # this is a hack around keras, to make the layer name unique
+        disc_gen_loss_layer = Activation(linear, name="d_gen_loss_output")
+        disc_last_gen = disc_gen_loss_layer(disc_last_gen)
 
+        # encoder
+        enc_last_gen = encoder_top.apply(gen_shared_trunk)
+
+        c_post_outputs_gen, mi_losses = self._add_enc_outputs_and_losses(enc_last_gen)
+
+        # REAL DISC & ENCODER BRANCH
+        # --------------------------------------------------------------------
+        self.real_input = Input(shape=self.image_shape, name="d_input")
+        real_shared_trunk = shared_net.apply(self.real_input)
+
+        # discriminator
+        disc_last_real = disc_top.apply(real_shared_trunk)
+        # this is a hack around keras, to make the layer name unique
+        disc_real_loss_layer = Activation(linear, name="d_real_loss_output")
+        disc_last_real = disc_real_loss_layer(disc_last_real)
+
+        # encoder
+        enc_last_real = encoder_top.apply(real_shared_trunk)
+
+        c_post_outputs_real, _ = self._add_enc_outputs_and_losses(enc_last_real, add_losses=False)
+        # user later by tensorboard
+        self.c_post_outputs_real = c_post_outputs_real
+
+        # GENERATOR MODEL
+        # --------------------------------------------------------------------
+        self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
+        # NOTE: the loss is not used, so it is arbitrary
+        self.gen_model.compile(optimizer='adam', loss="mean_squared_error")
+
+        # ENCODER MODEL
+        # --------------------------------------------------------------------
         self.encoder_model = Model(inputs=self.real_input,
-                                   outputs=self.posterior_outputs,
+                                   outputs=c_post_outputs_real,
                                    name="enc_model")
-
-        # NOTE: Here the loss does not matter, we'll only use this model for predictions
-        # (encoding of real data to latent space)
+        # NOTE: the loss is not used, so it is arbitrary
         self.encoder_model.compile(optimizer='adam', loss="mean_squared_error")
 
-        # ENCODER & GENERATOR & DISCRIMINATOR:
+        # DISCRIMINATOR MODEL
         # --------------------------------------------------------------------
-        # during training they are all used together
+        self.disc_model = Model(inputs=[self.real_input], outputs=[disc_last_real])
+        # NOTE: the loss is not used, so it is arbitrary
+        self.disc_model.compile(optimizer='adam', loss="mean_squared_error")
 
-        encoder_last = encoder_top.apply(generated_trunk)
+        # DISCRIMINATOR TRAINING MODEL
+        # --------------------------------------------------------------------
+        # freeze the generator layers when training the discriminator
+        gen_net.freeze()
 
-        posterior_outputs, mi_losses = self._add_enc_outputs_and_losses(encoder_last)
+        # Define the binary cross entropy (as two losses for convinience)
+        # divide by two to compensate for the split
+        def disc_real_loss(targets, real_preds):
+            # NOTE: targets are ignored, cause it's clear those are real samples
+            return -K.log(real_preds + K.epsilon()) / 2.0
+
+        def disc_gen_loss(targets, gen_preds):
+            # NOTE: targets are ignored, cause it's clear those are real samples
+            return -K.log(1 - gen_preds + K.epsilon()) / 2.0
+
+        self.disc_train_model = Model(inputs=[self.real_input] + prior_param_inputs,
+                                      outputs=[disc_last_gen, disc_last_real] + c_post_outputs_gen,
+                                      name="disc_train_model")
+        disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
+                       disc_real_loss_layer.name: disc_real_loss}
+        disc_losses = merge_dicts(disc_losses, mi_losses)
+        self.disc_train_model.compile(optimizer=Adam(lr=0.001),
+                                      loss=disc_losses)
+
+        # GENERATOR TRAINING MODEL
+        # --------------------------------------------------------------------
+        # unfreeze the gen model
+        gen_net.unfreeze()
+        # TODO: decide whether to freeze the shared net
+        shared_net.freeze()
+        # Freeze the discriminator model when training the generator
+        disc_top.freeze()
 
         def gen_loss(targets, preds):
-            # again, targets are not needed - ignore them
-
-            # define the standard disc GAN loss
-            # K.epsilon for numeric stability
+            # NOTE: targets are ignored, cause it's clear those are generated samples
             return -K.log(preds + K.epsilon())
 
-        losses = mi_losses.copy()
-        losses[disc_top.layers[-1].name] = gen_loss
+        gen_losses = {disc_gen_loss_layer.name: gen_loss}
+        gen_losses = merge_dicts(gen_losses, mi_losses)
 
-        self.enc_gen_model = Model(inputs=prior_param_inputs,
-                                   outputs=[disc_out_gen] + posterior_outputs,
-                                   name="enc_gen_model")
+        self.gen_train_model = Model(inputs=prior_param_inputs,
+                                     outputs=[disc_last_gen] + c_post_outputs_gen,
+                                     name="gen_train_model")
+        self.gen_train_model.compile(optimizer=Adam(lr=0.001),
+                                     loss=gen_losses)
 
-        self.enc_gen_model.compile(optimizer='adam', loss=losses)
-
-        # DEBUGGING
-        # disc prediction
-        self.disc_prediction = K.function(inputs=[K.learning_phase()] + self.disc_model.inputs,
-                                          outputs=[disc_out])
-
-        self.gen_and_predict = K.function(inputs=[K.learning_phase()] + self.enc_gen_model.inputs,
-                                          outputs=[disc_out_gen, -K.log(disc_out_gen), generated])
+        # FOR DEBUGGING
+        self.gen_and_predict = K.function(inputs=[K.learning_phase()] + prior_param_inputs,
+                                          outputs=[disc_last_gen, generated])
+        self.disc_predict = K.function(inputs=[K.learning_phase(), self.real_input],
+                                       outputs=[disc_last_real])
 
     def _sample_latent_inputs(self):
         samples = {}
@@ -293,28 +307,34 @@ class InfoGAN(object):
 
         return params
 
-    def _sanity_check(self):
-        prior_params = self._assemble_prior_params()
+    def sanity_check(self):
+        """_sanity_check
 
-        gen_score, log_vals, samples = self.gen_and_predict([0] + prior_params)
-        disc_score = self.disc_prediction([0] + [samples])
-        print(gen_score)
-        print(log_vals)
-        print(disc_score)
-        assert np.all(np.equal(gen_score, disc_score))
+        Checks that the gen_train_model uses the same discriminator weights
+        as in the disc_model.
+        """
+        prior_params = self._assemble_prior_params()
+        gen_score, samples = self.gen_and_predict([0] + prior_params)
+        disc_score1 = self.disc_model.predict(samples)
+        disc_score2 = self.disc_predict([0, samples])
+        # print("Disc: {}".format(disc_score))
+        # print("Gen: {}".format(gen_score))
+        assert np.all(np.isclose(gen_score, disc_score1, atol=1.e-2))
+        assert np.all(np.equal(gen_score, disc_score2))
 
     def train_disc_pass(self, samples_batch):
-        dummy_targets = np.ones((self.batch_size,), dtype=np.float32)
+        dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
+            len(self.disc_train_model.outputs)
         prior_params = self._assemble_prior_params()
-        return self.disc_model.train_on_batch([samples_batch] + prior_params,
-                                              dummy_targets)
+        return self.disc_train_model.train_on_batch([samples_batch] + prior_params,
+                                                    dummy_targets)
 
     def train_gen_pass(self):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
-            len(self.enc_gen_model.outputs)
+            len(self.gen_train_model.outputs)
         prior_params = self._assemble_prior_params()
-        return self.enc_gen_model.train_on_batch(prior_params,
-                                                 dummy_targets)
+        return self.gen_train_model.train_on_batch(prior_params,
+                                                   dummy_targets)
 
     def generate(self):
         prior_params = self._assemble_prior_params()
@@ -322,3 +342,9 @@ class InfoGAN(object):
 
     def encode(self, samples):
         return self.encoder_model.predict(samples, batch_size=self.batch_size)
+
+
+def merge_dicts(x, y):
+    z = x.copy()
+    z.update(y)
+    return z

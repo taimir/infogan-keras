@@ -23,10 +23,10 @@ class ModelTrainer(object):
         self.val_y = val_y
 
         self.board = TensorBoard(histogram_freq=1)
-        self.board.set_model(self.model.enc_gen_model)
+        self.board.set_model(self.model.disc_train_model)
 
         prior_params = self.model._assemble_prior_params()
-        self.board.validation_data = prior_params
+        self.board.validation_data = [val_x[:self.model.batch_size]] + prior_params
 
         # feed disctionary for the images
         self.gen_feed_dict = dict(zip(self.model.gen_model.inputs + [K.learning_phase()],
@@ -49,7 +49,7 @@ class ModelTrainer(object):
         # add generated encodings summary
         enc_summaries = []
         for i in range(10):
-            for output in self.model.posterior_outputs:
+            for output in self.model.c_post_outputs_real:
                 if "c1" in output.name:
                     output_class = K.argmax(output, axis=1)
                     enc_summary = tf.summary.histogram("encoded_{}s".format(i),
@@ -61,17 +61,19 @@ class ModelTrainer(object):
         for i in range(50):
             counter = 0
             for samples in self.data_generator():
-                disc_loss = self.model.train_disc_pass(samples)
+                disc_losses = self.model.train_disc_pass(samples)
                 counter += 1
                 gen_losses = self.model.train_gen_pass()
 
                 if counter % 20 == 0:
-                    print("Gen names: {}".format(self.model.enc_gen_model.metrics_names))
-                    print("Gen losses: {}".format(gen_losses) + "\tDisc loss: {}".format(disc_loss))
+                    print("Gen losses: {}".format(gen_losses))
+
                     loss_logs = {}
-                    loss_logs['discriminator_loss'] = disc_loss
-                    for loss, loss_name in zip(gen_losses, self.model.enc_gen_model.metrics_names):
-                        loss_logs[loss_name] = loss
+                    for loss, loss_name in zip(gen_losses, self.model.gen_train_model.metrics_names):
+                        loss_logs["g_" + loss_name] = loss
+
+                    for loss, loss_name in zip(disc_losses, self.model.disc_train_model.metrics_names):
+                        loss_logs["d_" + loss_name] = loss
 
                     # visualize some generated images
                     sess = K.get_session()
@@ -99,13 +101,13 @@ class ModelTrainer(object):
                     # plot the scalar values & histograms and flush other summaries
                     self.board.on_epoch_end(epoch_count, loss_logs)
 
-                    # save the model weights
-                    self.model.disc_model.save_weights("disc_model.hdf5", overwrite=True)
-                    self.model.enc_gen_model.save_weights("enc_gen_model.hdf5", overwrite=True)
-
+                    self.model.sanity_check()
                     epoch_count += 1
 
                 if counter % 300 == 0:
+                    # save the model weights
+                    self.model.disc_train_model.save_weights("disc_train_model.hdf5", overwrite=True)
+                    self.model.gen_train_model.save_weights("gen_train_model.hdf5", overwrite=True)
                     break
 
         self.board.on_train_end({})
