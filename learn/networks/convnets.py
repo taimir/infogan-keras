@@ -14,17 +14,22 @@ class Network(object):
 
     __metaclass__ = abc.ABCMeta
 
-    @abc.abstractmethod
+    def __init__(self):
+        self.layers = []
+
     def apply(self, inputs):
-        raise NotImplementedError
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
 
-    @abc.abstractmethod
     def freeze(self):
-        raise NotImplementedError
+        for layer in self.layers:
+            layer.trainable = False
 
-    @abc.abstractmethod
     def unfreeze(self):
-        raise NotImplementedError
+        for layer in self.layers:
+            layer.trainable = True
 
 
 class GeneratorNet(Network):
@@ -33,26 +38,26 @@ class GeneratorNet(Network):
         self.layers = []
 
         # a fully connected is needed to bring the inputs to a shape suitable for convolutions
-        self.layers.append(Dense(units=256, name="g_dense_1"))
-        self.layers.append(BatchNormalization(name="g_dense_bn_1", axis=-1))
+        self.layers.append(Dense(units=128, name="g_dense_1"))
+        self.layers.append(BatchNormalization(name="g_dense_bn_1", axis=-1, scale=False))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_1"))
 
-        self.layers.append(Dense(units=image_shape[1] // 4 * image_shape[2] // 4 * 64,
+        self.layers.append(Dense(units=image_shape[1] // 4 * image_shape[2] // 4 * 32,
                                  name="g_dense_2"))
-        self.layers.append(BatchNormalization(name="g_dense_bn_2", axis=-1))
+        self.layers.append(BatchNormalization(name="g_dense_bn_2", axis=-1, scale=False))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_2"))
 
         # # # I use the `th` orientation of theano
-        self.layers.append(Reshape(target_shape=(64, image_shape[1] // 4, image_shape[2] // 4),
+        self.layers.append(Reshape(target_shape=(32, image_shape[1] // 4, image_shape[2] // 4),
                                    name="g_reshape"))
 
         # # start applying the deconv layers
-        self.layers.append(Conv2DTranspose(filters=32, kernel_size=(3, 3),
+        self.layers.append(Conv2DTranspose(filters=16, kernel_size=(3, 3),
                                            strides=(2, 2),
                                            padding='same',
                                            data_format='channels_first',
                                            name="g_deconv_1"))
-        self.layers.append(BatchNormalization(name="g_deconv_bn_1", axis=1))
+        self.layers.append(BatchNormalization(name="g_deconv_bn_1", axis=1, scale=False))
         self.layers.append(Activation(activation=K.relu, name="g_deconv_activ_1"))
 
         # # TODO: if we'll be generating color images, this needs to produce
@@ -64,56 +69,45 @@ class GeneratorNet(Network):
                                            name="g_deconv_2"))
         self.layers.append(Activation(activation=K.sigmoid, name="g_deconv_activ_2"))
 
-    def apply(self, inputs):
-        network = inputs
-        for layer in self.layers:
-            network = layer(network)
-
-        return network
-
-    def freeze(self):
-        for layer in self.layers:
-            layer.trainable = False
-
-    def unfreeze(self):
-        for layer in self.layers:
-            layer.trainable = True
-
 
 class SharedNet(Network):
 
     def __init__(self):
         self.layers = []
 
-        self.layers.append(Conv2D(filters=32,
+        self.layers.append(Conv2D(filters=16,
                                   kernel_size=(3, 3),
                                   padding="same",
                                   name="d_conv_1"))
         self.layers.append(LeakyReLU(name="d_conv_activ_1"))
 
-        self.layers.append(Conv2D(filters=64,
+        self.layers.append(Conv2D(filters=32,
                                   kernel_size=(3, 3),
                                   padding="same",
                                   name="d_conv_2"))
-        self.layers.append(BatchNormalization(name="d_conv_bn_2", axis=1))
+        self.layers.append(BatchNormalization(name="d_conv_bn_2", axis=1, scale=False))
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 
         self.layers.append(Flatten(name="d_flatten"))
-        self.layers.append(Dense(units=256, name="d_dense_1"))
-        self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1))
+        self.layers.append(Dense(units=128, name="d_dense_1"))
+        self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1, scale=False))
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
 
-    def apply(self, inputs):
-        network = inputs
-        for layer in self.layers:
-            network = layer(network)
 
-        return network
+class EncoderTop(Network):
 
-    def freeze(self):
-        for layer in self.layers:
-            layer.trainable = False
+    def __init__(self):
+        self.layers = []
 
-    def unfreeze(self):
-        for layer in self.layers:
-            layer.trainable = True
+        self.layers.append(Dense(128, name="e_dense_1"))
+        self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
+        self.layers.append(LeakyReLU(name="e_dense_activ_1"))
+
+
+class DiscriminatorTop(Network):
+
+    def __init__(self):
+        self.layers = []
+
+        self.layers.append(Dense(1, name="d_classif_layer"))
+        self.layers.append(Activation(activation=K.sigmoid, name="d_classif_activ"))

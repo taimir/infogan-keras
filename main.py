@@ -1,22 +1,23 @@
 """
 Example implementation of InfoGAN
 """
-# import os
-# import tensorflow as tf
-# import keras.backend.tensorflow_backend as KTF
+import os
+import tensorflow as tf
+import keras.backend.tensorflow_backend as KTF
 
-# def get_session(gpu_fraction=0.9):
-    # num_threads = os.environ.get('OMP_NUM_THREADS')
-    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
-                                # allow_growth=True)
 
-    # if num_threads:
-        # return tf.Session(config=tf.ConfigProto(
-            # gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
-    # else:
-        # return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+def get_session(gpu_fraction=0.9):
+    num_threads = os.environ.get('OMP_NUM_THREADS')
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
+                                allow_growth=True)
 
-# KTF.set_session(get_session())
+    if num_threads:
+        return tf.Session(config=tf.ConfigProto(
+            gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
+    else:
+        return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+
+KTF.set_session(get_session())
 
 import numpy as np
 from keras.datasets import mnist
@@ -37,6 +38,7 @@ if __name__ == "__main__":
     x_test = x_test.reshape((-1, 1, 28, 28)) / 255
 
     x_val = x_train[:1000]
+    y_val = y_train[:1000]
     x_train = x_train[1000:]
 
     datagen = ImageDataGenerator(data_format='channels_first')
@@ -53,9 +55,9 @@ if __name__ == "__main__":
     image_dist = Bernoulli()
     prior_params = {'c1': {'p_vals': np.ones((batch_size, 10), dtype=np.float32) / 10},
                     # 'c2': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
-                           # 'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    # 'std': np.ones((batch_size, 1), dtype=np.float32)},
                     # 'c3': {'mean': np.zeros((batch_size, 1), dtype=np.float32),
-                           # 'std': np.ones((batch_size, 1), dtype=np.float32)},
+                    # 'std': np.ones((batch_size, 1), dtype=np.float32)},
                     'z': {'mean': np.zeros((batch_size, 30), dtype=np.float32),
                           'std': np.ones((batch_size, 30), dtype=np.float32)}
                     }
@@ -67,10 +69,12 @@ if __name__ == "__main__":
                     image_dist=image_dist,
                     prior_params=prior_params)
 
-    plot_model(model.enc_gen_model, to_file='gan_model.png')
-    plot_model(model.disc_model, to_file='disc_model.png')
+    plot_model(model.gen_train_model, to_file='gen_train_model.png')
+    plot_model(model.disc_train_model, to_file='disc_train_model.png')
     plot_model(model.encoder_model, to_file='encoder_model.png')
+    plot_model(model.disc_model, to_file='disc_model.png')
+    plot_model(model.gen_model, to_file='gen_model.png')
 
-    model_trainer = ModelTrainer(model, data_generator, x_val)
+    model_trainer = ModelTrainer(model, data_generator, x_val, y_val)
 
     model_trainer.train()
