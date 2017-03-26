@@ -141,7 +141,7 @@ class InfoGAN(object):
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
         disc_losses = merge_dicts(disc_losses, mi_losses)
-        self.disc_train_model.compile(optimizer=Adam(lr=0.001),
+        self.disc_train_model.compile(optimizer=Adam(lr=2e-5, clipnorm=1.),
                                       loss=disc_losses)
 
         # GENERATOR TRAINING MODEL
@@ -163,7 +163,7 @@ class InfoGAN(object):
         self.gen_train_model = Model(inputs=prior_param_inputs,
                                      outputs=[disc_last_gen] + c_post_outputs_gen,
                                      name="gen_train_model")
-        self.gen_train_model.compile(optimizer=Adam(lr=0.001),
+        self.gen_train_model.compile(optimizer=Adam(lr=1e-4, clipnorm=1.),
                                      loss=gen_losses)
 
         # FOR DEBUGGING

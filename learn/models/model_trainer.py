@@ -86,7 +86,7 @@ class ModelTrainer(object):
                         real_vals = self.val_x[self.val_y == i]
                         result = sess.run([summary],
                                           feed_dict={self.model.real_input: real_vals,
-                                                     K.learning_phase(): 0})
+                                                     K.learning_phase(): 1})
                         summary_str = result[0]
                         self.board.writer.add_summary(summary_str, epoch_count)
 
@@ -94,7 +94,7 @@ class ModelTrainer(object):
                         real_img_summary = real_summaries[i]
                         result = sess.run([real_img_summary],
                                           feed_dict={self.model.real_input: real_vals,
-                                                     K.learning_phase(): 0})
+                                                     K.learning_phase(): 1})
                         summary_str = result[0]
                         self.board.writer.add_summary(summary_str, epoch_count)
 
