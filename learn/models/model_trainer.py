@@ -22,7 +22,7 @@ class ModelTrainer(object):
         self.val_x = val_x
         self.val_y = val_y
 
-        self.board = TensorBoard(histogram_freq=1)
+        self.board = TensorBoard(histogram_freq=20, log_dir=gan_model.experiment_id)
         self.board.set_model(self.model.disc_train_model)
 
         prior_params = self.model._assemble_prior_params()
@@ -124,7 +124,7 @@ class ModelTrainer(object):
                     self.model.sanity_check()
                     epoch_count += 1
 
-                if counter % 300 == 0:
+                if counter % 100 == 0:
                     # save the model weights
                     self.model.disc_train_model.save_weights(
                         "disc_train_model.hdf5", overwrite=True)
