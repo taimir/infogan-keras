@@ -8,3 +8,7 @@ That way the real & fake distributions are put on the same "level" from the very
 * G and D should be balanced - specifically, if the network D is too complex and G does not have enough capacity, D will always discriminate better and G's loss will keep going up and oscilating for a long time. So pick a medium-powered D and an expressive G model. Setting the learning rate of D somewhat lower than G also helps if D is really dominating G.
 
 * Sine-like shapes in the G (and D) loss are actually normal, since we're doing alternating optimizations.
+
+* It's crucial to freeze all parts of the discriminator during the optimization of G; this includes the shared part with the encoder.
+
+* The amount of non-salient noise factors should be sufficiently large.
