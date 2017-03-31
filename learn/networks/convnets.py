@@ -100,7 +100,7 @@ class EncoderTop(Network):
     def __init__(self):
         self.layers = []
 
-        self.layers.append(Dense(1024, name="e_dense_1"))
+        self.layers.append(Dense(128, name="e_dense_1"))
         self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
         self.layers.append(LeakyReLU(name="e_dense_activ_1"))
 

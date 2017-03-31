@@ -142,7 +142,7 @@ class InfoGAN(object):
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
         disc_losses = merge_dicts(disc_losses, mi_losses)
-        self.disc_train_model.compile(optimizer=Adam(lr=8e-4, beta_1=0.5, clipnorm=1.0),
+        self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.5, clipnorm=1.0, decay=1e-3),
                                       loss=disc_losses)
 
         # GENERATOR TRAINING MODEL
@@ -153,7 +153,7 @@ class InfoGAN(object):
         shared_net.freeze()
         # Freeze the discriminator model
         disc_top.freeze()
-        # encoder_top.freeze()
+        encoder_top.freeze()
 
         def gen_loss(targets, preds):
             # NOTE: targets are ignored, cause it's clear those are generated samples
@@ -165,7 +165,7 @@ class InfoGAN(object):
         self.gen_train_model = Model(inputs=prior_param_inputs,
                                      outputs=[disc_last_gen] + c_post_outputs_gen,
                                      name="gen_train_model")
-        self.gen_train_model.compile(optimizer=Adam(lr=4e-3, beta_1=0.5, clipnorm=1.0),
+        self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.5, clipnorm=1.0, decay=1e-3),
                                      loss=gen_losses)
 
         # FOR DEBUGGING
