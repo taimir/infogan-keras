@@ -42,6 +42,16 @@ class InfoGAN(object):
         self.prior_params = prior_params
         self.experiment_id = experiment_id
 
+        # Define meaningful dist output layers
+        self.dist_output_layers = {}
+        for dist_name, dist in self.meaningful_dists.items():
+            info = dist.param_info()
+            self.dist_output_layers[dist_name] = {}
+            for param, (dim, activation) in info.items():
+                dense = Dense(dim, name="e_dense_{}_{}".format(dist_name, param))
+                act = Activation(activation, name="e_activ_{}_{}".format(dist_name, param))
+                self.dist_output_layers[dist_name][param] = [dense, act]
+
         # GENERATION BRANCH
         # --------------------------------------------------------------------
         sampled_latents, prior_param_inputs, prior_param_names, prior_param_dist_names = \
@@ -82,6 +92,8 @@ class InfoGAN(object):
         enc_last_gen = encoder_top.apply(gen_shared_trunk)
 
         c_post_outputs_gen, mi_losses = self._add_enc_outputs_and_losses(enc_last_gen)
+        # user later by tensorboard
+        self.c_post_outputs_gen = c_post_outputs_gen
 
         # REAL DISC & ENCODER BRANCH
         # --------------------------------------------------------------------
@@ -280,13 +292,12 @@ class InfoGAN(object):
         return posterior_outputs, mi_losses
 
     def _add_dist_outputs(self, dist_name, dist, layer):
-        info = dist.param_info()
         outputs = {}
-        for param, (dim, activation) in info.items():
-            out = Dense(dim, name="e_dense_{}_{}".format(dist_name, param))(layer)
-            out = Activation(activation, name="e_activ_{}_{}".format(dist_name, param))(out)
+        for param, param_layers in self.dist_output_layers[dist_name].items():
+            out = layer
+            for param_layer in param_layers:
+                out = param_layer(out)
             outputs[param] = out
-
         return outputs
 
     def _build_mi_loss(self, samples, dist, param_names_list, param_outputs_dims):

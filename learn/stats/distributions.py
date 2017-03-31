@@ -66,7 +66,7 @@ class IsotropicGaussian(Distribution):
         mean = param_dict['mean']
         std = param_dict['std']
         return K.sum(
-            0.5 * np.log(2 * np.pi + K.epsilon()) + K.log(std) +
+            0.5 * np.log(2 * np.pi + K.epsilon()) + K.log(std + K.epsilon()) +
             0.5 * K.square((samples - mean) / (std + K.epsilon())),
             axis=-1)
 
