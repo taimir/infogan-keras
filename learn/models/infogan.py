@@ -23,7 +23,7 @@ class InfoGAN(object):
     """
 
     def __init__(self, batch_size, image_shape, noise_dists,
-                 meaningful_dists, image_dist, prior_params):
+                 meaningful_dists, image_dist, prior_params, experiment_id="infogan"):
         """__init__
 
         :param batch_size - number of real samples passed at each iteration
@@ -40,6 +40,7 @@ class InfoGAN(object):
         self.meaningful_dists = meaningful_dists
         self.image_dist = image_dist
         self.prior_params = prior_params
+        self.experiment_id = experiment_id
 
         # GENERATION BRANCH
         # --------------------------------------------------------------------
@@ -141,17 +142,18 @@ class InfoGAN(object):
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
         disc_losses = merge_dicts(disc_losses, mi_losses)
-        self.disc_train_model.compile(optimizer=Adam(lr=0.001),
+        self.disc_train_model.compile(optimizer=Adam(lr=8e-4, beta_1=0.5, clipnorm=1.0),
                                       loss=disc_losses)
 
         # GENERATOR TRAINING MODEL
         # --------------------------------------------------------------------
         # unfreeze the gen model
         gen_net.unfreeze()
-        # TODO: decide whether to freeze the shared net
+        # freeze the shared net, it's part of the discriminator
         shared_net.freeze()
-        # Freeze the discriminator model when training the generator
+        # Freeze the discriminator model
         disc_top.freeze()
+        # encoder_top.freeze()
 
         def gen_loss(targets, preds):
             # NOTE: targets are ignored, cause it's clear those are generated samples
@@ -163,7 +165,7 @@ class InfoGAN(object):
         self.gen_train_model = Model(inputs=prior_param_inputs,
                                      outputs=[disc_last_gen] + c_post_outputs_gen,
                                      name="gen_train_model")
-        self.gen_train_model.compile(optimizer=Adam(lr=0.001),
+        self.gen_train_model.compile(optimizer=Adam(lr=4e-3, beta_1=0.5, clipnorm=1.0),
                                      loss=gen_losses)
 
         # FOR DEBUGGING
