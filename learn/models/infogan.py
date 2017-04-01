@@ -11,7 +11,7 @@ from keras.models import Model
 from keras.activations import linear
 from keras.optimizers import Adam
 
-from learn.networks.convnets import GeneratorNet, SharedNet, EncoderTop, DiscriminatorTop
+from learn.networks.convnets import GeneratorNet, EncoderNet, DiscriminatorNet
 
 
 class InfoGAN(object):
@@ -73,23 +73,19 @@ class InfoGAN(object):
         # used later by tensorboard
         self.tensor_generated = generated
 
-        # shared network for the discriminator & encoder
-        shared_net = SharedNet()
-        disc_top = DiscriminatorTop()
-        encoder_top = EncoderTop()
+        disc_net = DiscriminatorNet()
+        enc_net = EncoderNet()
 
         # GEN DISC & ENCODER BRANCH
         # --------------------------------------------------------------------
-        gen_shared_trunk = shared_net.apply(generated)
-
         # discriminator
-        disc_last_gen = disc_top.apply(gen_shared_trunk)
+        disc_last_gen = disc_net.apply(generated)
         # this is a hack around keras, to make the layer name unique
         disc_gen_loss_layer = Activation(linear, name="d_gen_loss_output")
         disc_last_gen = disc_gen_loss_layer(disc_last_gen)
 
         # encoder
-        enc_last_gen = encoder_top.apply(gen_shared_trunk)
+        enc_last_gen = enc_net.apply(generated)
 
         c_post_outputs_gen, mi_losses = self._add_enc_outputs_and_losses(enc_last_gen)
         # user later by tensorboard
@@ -98,16 +94,15 @@ class InfoGAN(object):
         # REAL DISC & ENCODER BRANCH
         # --------------------------------------------------------------------
         self.real_input = Input(shape=self.image_shape, name="d_input")
-        real_shared_trunk = shared_net.apply(self.real_input)
 
         # discriminator
-        disc_last_real = disc_top.apply(real_shared_trunk)
+        disc_last_real = disc_net.apply(self.real_input)
         # this is a hack around keras, to make the layer name unique
         disc_real_loss_layer = Activation(linear, name="d_real_loss_output")
         disc_last_real = disc_real_loss_layer(disc_last_real)
 
         # encoder
-        enc_last_real = encoder_top.apply(real_shared_trunk)
+        enc_last_real = enc_net.apply(self.real_input)
 
         c_post_outputs_real, _ = self._add_enc_outputs_and_losses(enc_last_real, add_losses=False)
         # user later by tensorboard
@@ -149,11 +144,10 @@ class InfoGAN(object):
             return -K.log(1 - gen_preds + K.epsilon()) / 2.0
 
         self.disc_train_model = Model(inputs=[self.real_input] + prior_param_inputs,
-                                      outputs=[disc_last_gen, disc_last_real] + c_post_outputs_gen,
+                                      outputs=[disc_last_gen, disc_last_real],
                                       name="disc_train_model")
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
-        disc_losses = merge_dicts(disc_losses, mi_losses)
         self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.2),
                                       loss=disc_losses)
 
@@ -161,16 +155,8 @@ class InfoGAN(object):
         # --------------------------------------------------------------------
         # unfreeze the gen model
         gen_net.unfreeze()
-        # freeze the shared net, it's part of the discriminator
-        shared_net.freeze()
         # Freeze the discriminator model
-        disc_top.freeze()
-        # freeze the encoder
-        encoder_top.freeze()
-        for param_layers_dict in self.dist_output_layers.values():
-            for param_layers in param_layers_dict.values():
-                for layer in param_layers:
-                    layer.trainable = False
+        disc_net.freeze()
 
         def gen_loss(targets, preds):
             # NOTE: targets are ignored, cause it's clear those are generated samples
