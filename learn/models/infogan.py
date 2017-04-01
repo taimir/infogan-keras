@@ -154,7 +154,7 @@ class InfoGAN(object):
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
         disc_losses = merge_dicts(disc_losses, mi_losses)
-        self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.5, clipnorm=1.0, decay=1e-3),
+        self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.2),
                                       loss=disc_losses)
 
         # GENERATOR TRAINING MODEL
@@ -165,7 +165,12 @@ class InfoGAN(object):
         shared_net.freeze()
         # Freeze the discriminator model
         disc_top.freeze()
+        # freeze the encoder
         encoder_top.freeze()
+        for param_layers_dict in self.dist_output_layers.values():
+            for param_layers in param_layers_dict.values():
+                for layer in param_layers:
+                    layer.trainable = False
 
         def gen_loss(targets, preds):
             # NOTE: targets are ignored, cause it's clear those are generated samples
@@ -177,7 +182,7 @@ class InfoGAN(object):
         self.gen_train_model = Model(inputs=prior_param_inputs,
                                      outputs=[disc_last_gen] + c_post_outputs_gen,
                                      name="gen_train_model")
-        self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.5, clipnorm=1.0, decay=1e-3),
+        self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
                                      loss=gen_losses)
 
         # FOR DEBUGGING
@@ -285,7 +290,8 @@ class InfoGAN(object):
             # build the mi_loss
             if add_losses:
                 samples = self.sampled_latents[dist_name]
-                mi_loss = self._build_mi_loss(samples, dist, param_names_list, param_outputs_dims)
+                mi_loss = self._build_mi_loss(samples, dist_name, dist, param_names_list,
+                                              param_outputs_dims)
 
                 mi_losses[loss_output_name] = mi_loss
 
@@ -300,7 +306,7 @@ class InfoGAN(object):
             outputs[param] = out
         return outputs
 
-    def _build_mi_loss(self, samples, dist, param_names_list, param_outputs_dims):
+    def _build_mi_loss(self, samples, dist_name, dist, param_names_list, param_outputs_dims):
         def mutual_info_loss(targets, preds):
             # ignore the targets
             param_dict = {}
@@ -311,6 +317,7 @@ class InfoGAN(object):
 
             loss = dist.nll(samples, param_dict)
             return loss
+
         return mutual_info_loss
 
     def _assemble_prior_params(self):

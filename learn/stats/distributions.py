@@ -66,11 +66,17 @@ class IsotropicGaussian(Distribution):
         sample = mean + std * eps
         return sample
 
-    def nll(self, samples, param_dict):
+    def nll(self, samples, param_dict, use_std=False):
         mean = param_dict['mean']
-        std = param_dict['std']
+        # using the std. dev should be done with caution, as it can
+        # result in very large gradients in the beginning of training
+        if use_std:
+            std = param_dict['std']
+        else:
+            std = 1.0
+
         return K.sum(
-            0.5 * np.log(2 * np.pi + K.epsilon()) + K.log(std + K.epsilon()) +
+            0.5 * np.log(2 * np.pi) + K.log(std + K.epsilon()) +
             0.5 * K.square((samples - mean) / (std + K.epsilon())),
             axis=-1)
 
