@@ -57,6 +57,10 @@ class IsotropicGaussian(Distribution):
 
     def sample(self, param_dict):
         mean = param_dict['mean']
+        return K.random_uniform(shape=K.shape(mean), minval=-1.0, maxval=+1.0)
+
+    def sample2(self, param_dict):
+        mean = param_dict['mean']
         std = param_dict['std']
         eps = K.random_normal(shape=K.shape(mean), mean=0, stddev=1.)
         sample = mean + std * eps
