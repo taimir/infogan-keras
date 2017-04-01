@@ -30,7 +30,7 @@ from learn.models.model_trainer import ModelTrainer
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
-batch_size = 128
+batch_size = 256
 
 if __name__ == "__main__":
     (x_train, y_train), (x_test, y_test) = mnist.load_data()

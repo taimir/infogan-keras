@@ -5,6 +5,8 @@ import keras.backend as K
 from keras.callbacks import TensorBoard
 import tensorflow as tf
 
+from learn.utils.visualization import image_grid
+
 
 class ModelTrainer(object):
     """
@@ -31,12 +33,11 @@ class ModelTrainer(object):
 
         # feed disctionary for the images
         self.vis_feed_dict = dict(zip(self.model.disc_train_model.inputs + [K.learning_phase()],
-                                      self.vis_data + [1]))
+                                      self.vis_data + [0]))
 
     def train(self):
         # add a generated images summary
         gen_image_summaries = []
-
         for dist_name, sampled_latent in self.model.sampled_latents.items():
             if "c1" in dist_name:
                 sampled_class = K.argmax(sampled_latent, axis=1)
@@ -46,15 +47,37 @@ class ModelTrainer(object):
                     selected = tf.gather(self.model.tensor_generated, which)
                     selected = tf.reshape(selected, (-1, 28, 28, 1))
 
+                    grid = image_grid(input_tensor=selected,
+                                      grid_shape=(5, 5),
+                                      image_shape=(28, 28, 1))
                     summary = tf.summary.image("generated_from_c1={}".format(i),
-                                               selected,
-                                               max_outputs=9)
+                                               grid,
+                                               max_outputs=1)
                     gen_image_summaries.append(summary)
 
         # add Encoder results summaries
         real_enc_image_summaries = []
-        gen_enc_image_summaries = []
         for output in self.model.c_post_outputs_real:
+            if "c1" in output.name:
+                for i in range(10):
+                    output_class = K.argmax(output, axis=1)
+                    which = tf.where(tf.equal(output_class, i))
+
+                    # do the same for the real images
+                    selected = tf.gather(self.model.real_input, which)
+                    selected = tf.reshape(selected, (-1, 28, 28, 1))
+
+                    grid = image_grid(input_tensor=selected,
+                                      grid_shape=(5, 5),
+                                      image_shape=(28, 28, 1))
+
+                    summary = tf.summary.image("real_encoded_as_c1={}".format(i),
+                                               grid,
+                                               max_outputs=1)
+                    real_enc_image_summaries.append(summary)
+
+        gen_enc_image_summaries = []
+        for output in self.model.c_post_outputs_gen:
             if "c1" in output.name:
                 for i in range(10):
                     output_class = K.argmax(output, axis=1)
@@ -64,19 +87,14 @@ class ModelTrainer(object):
                     selected = tf.gather(self.model.tensor_generated, which)
                     selected = tf.reshape(selected, (-1, 28, 28, 1))
 
+                    grid = image_grid(input_tensor=selected,
+                                      grid_shape=(5, 5),
+                                      image_shape=(28, 28, 1))
+
                     summary = tf.summary.image("gen_encoded_as_c1={}".format(i),
-                                               selected,
-                                               max_outputs=9)
+                                               grid,
+                                               max_outputs=1)
                     gen_enc_image_summaries.append(summary)
-
-                    # do the same for the real images
-                    selected = tf.gather(self.model.real_input, which)
-                    selected = tf.reshape(selected, (-1, 28, 28, 1))
-
-                    summary = tf.summary.image("real_encoded_as_c1={}".format(i),
-                                               selected,
-                                               max_outputs=9)
-                    real_enc_image_summaries.append(summary)
 
         # training iterations
         epoch_count = 0
