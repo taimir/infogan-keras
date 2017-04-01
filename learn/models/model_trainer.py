@@ -1,8 +1,10 @@
 """
 Trainer for the InfoGan
 """
+import numpy as np
 import keras.backend as K
 from keras.callbacks import TensorBoard
+from keras.utils.np_utils import to_categorical
 import tensorflow as tf
 
 from learn.utils.visualization import image_grid
@@ -46,7 +48,6 @@ class ModelTrainer(object):
                     # select only the images that were produced from c1 = i
                     selected = tf.gather(self.model.tensor_generated, which)
                     selected = tf.reshape(selected, (-1, 28, 28, 1))
-
                     grid = image_grid(input_tensor=selected,
                                       grid_shape=(5, 5),
                                       image_shape=(28, 28, 1))
@@ -63,7 +64,7 @@ class ModelTrainer(object):
                     output_class = K.argmax(output, axis=1)
                     which = tf.where(tf.equal(output_class, i))
 
-                    # do the same for the real images
+                    # select only the images that were encoded as c1 = i
                     selected = tf.gather(self.model.real_input, which)
                     selected = tf.reshape(selected, (-1, 28, 28, 1))
 
@@ -95,6 +96,40 @@ class ModelTrainer(object):
                                                grid,
                                                max_outputs=1)
                     gen_enc_image_summaries.append(summary)
+
+        # summaries for the continuous variables, covering the range from -1 to 1
+        gen_cont_summaries = {}
+        for output in self.model.c_post_outputs_gen:
+            if "c1" not in output.name:
+                selected = tf.reshape(self.model.tensor_generated, (-1, 28, 28, 1))
+                grid = image_grid(input_tensor=selected,
+                                  grid_shape=(10, 10),
+                                  image_shape=(28, 28, 1))
+                summary = tf.summary.image("gen_span_over_{}".format(output.name),
+                                           grid,
+                                           max_outputs=1)
+                gen_cont_summaries[output.name] = summary
+
+        cont_span_dict_c2 = {
+            "c1": np.concatenate([to_categorical(np.array([i] * 10), num_classes=10)
+                                  for i in range(10)], axis=0),
+            "c2": np.repeat(np.linspace(-1, 1, num=10).reshape((1, 10)), repeats=10, axis=0).reshape((100, 1)),
+            "c3": np.zeros((100, 1)),
+            "z": np.zeros((100, 62)),
+        }
+        cont_span_dict_c3 = {
+            "c1": np.concatenate([to_categorical(np.array([i] * 10), num_classes=10)
+                                  for i in range(10)], axis=0),
+            "c2": np.zeros((100, 1)),
+            "c3": np.repeat(np.linspace(-1, 1, num=10).reshape((1, 10)), repeats=10, axis=0).reshape((100, 1)),
+            "z": np.zeros((100, 62)),
+        }
+
+        cont_feed_dict_c2 = {K.learning_phase(): 0}
+        cont_feed_dict_c3 = {K.learning_phase(): 0}
+        for dist_name, sample_tensor in self.model.sampled_latents.items():
+            cont_feed_dict_c2[sample_tensor] = cont_span_dict_c2[dist_name]
+            cont_feed_dict_c3[sample_tensor] = cont_span_dict_c3[dist_name]
 
         # training iterations
         epoch_count = 0
@@ -133,6 +168,16 @@ class ModelTrainer(object):
                     for summary in real_enc_image_summaries:
                         result = sess.run([summary],
                                           feed_dict=self.vis_feed_dict)
+                        summary_str = result[0]
+                        self.board.writer.add_summary(summary_str, epoch_count)
+
+                    for cont_output_name, summary in gen_cont_summaries.items():
+                        if "c2" in cont_output_name:
+                            result = sess.run([summary],
+                                              feed_dict=cont_feed_dict_c2)
+                        else:
+                            result = sess.run([summary],
+                                              feed_dict=cont_feed_dict_c3)
                         summary_str = result[0]
                         self.board.writer.add_summary(summary_str, epoch_count)
 
