@@ -70,35 +70,7 @@ class GeneratorNet(Network):
         self.layers.append(Activation(activation=K.sigmoid, name="g_deconv_activ_2"))
 
 
-class EncoderNet(Network):
-
-    def __init__(self):
-        self.layers = []
-
-        self.layers.append(Conv2D(filters=64,
-                                  kernel_size=(3, 3),
-                                  padding="same",
-                                  name="e_conv_1"))
-        self.layers.append(LeakyReLU(name="e_conv_activ_1"))
-
-        self.layers.append(Conv2D(filters=128,
-                                  kernel_size=(3, 3),
-                                  padding="same",
-                                  name="e_conv_2"))
-        self.layers.append(BatchNormalization(name="e_conv_bn_2", axis=-1))
-        self.layers.append(LeakyReLU(name="e_conv_activ_2"))
-
-        self.layers.append(Flatten(name="e_flatten"))
-        self.layers.append(Dense(units=1024, name="e_dense_1"))
-        self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1))
-        self.layers.append(LeakyReLU(name="e_dense_1_activ"))
-
-        self.layers.append(Dense(128, name="e_dense_2"))
-        self.layers.append(BatchNormalization(name="e_dense_bn_2", axis=-1, scale=False))
-        self.layers.append(LeakyReLU(name="e_dense_activ_2"))
-
-
-class DiscriminatorNet(Network):
+class SharedNet(Network):
 
     def __init__(self):
         self.layers = []
@@ -121,6 +93,22 @@ class DiscriminatorNet(Network):
         self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1))
 
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
+
+
+class EncoderTop(Network):
+
+    def __init__(self):
+        self.layers = []
+
+        self.layers.append(Dense(128, name="e_dense_1"))
+        self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
+        self.layers.append(LeakyReLU(name="e_dense_activ_1"))
+
+
+class DiscriminatorTop(Network):
+
+    def __init__(self):
+        self.layers = []
 
         self.layers.append(Dense(1, name="d_classif_layer"))
         self.layers.append(Activation(activation=K.sigmoid, name="d_classif_activ"))
