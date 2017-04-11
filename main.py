@@ -6,6 +6,8 @@ import os
 import tensorflow as tf
 import keras.backend.tensorflow_backend as KTF
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+
 
 def get_session(gpu_fraction=0.8):
     num_threads = os.environ.get('OMP_NUM_THREADS')
