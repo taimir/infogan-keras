@@ -363,6 +363,10 @@ class InfoGAN(object):
     def encode(self, samples):
         return self.encoder_model.predict(samples, batch_size=self.batch_size)
 
+    def load_weights(self, gen_weights_filepath, disc_weights_filepath):
+        self.disc_train_model.load_weights(disc_weights_filepath)
+        self.gen_train_model.load_weights(gen_weights_filepath)
+
 
 def merge_dicts(x, y):
     z = x.copy()
