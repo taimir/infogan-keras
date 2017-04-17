@@ -40,7 +40,7 @@ class ModelTrainer(object):
         self.vis_feed_dict = dict(zip(self.model.disc_train_model.inputs + [K.learning_phase()],
                                       self.vis_data + [0]))
 
-    def train(self):
+    def train(self, n_epochs=100):
         # add a generated images summary
         gen_image_summaries = []
         for dist_name, sampled_latent in self.model.sampled_latents.items():
@@ -136,7 +136,7 @@ class ModelTrainer(object):
 
         # training iterations
         epoch_count = 0
-        for i in range(50):
+        for i in range(n_epochs):
             counter = 0
             for samples in self.data_generator():
                 disc_losses = self.model.train_disc_pass(samples)
