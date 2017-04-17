@@ -34,7 +34,7 @@ from learn.utils.visualization import ROCView, micro_macro_roc, cluster_silhouet
 batch_size = 256
 
 
-def test_mnist_performance(model, x_test, y_test, x_train, y_train):
+def test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_id):
     roc_view = ROCView()
     n_classes = 10
 
@@ -83,15 +83,16 @@ def test_mnist_performance(model, x_test, y_test, x_train, y_train):
     macro_fpr, macro_tpr = res['macro']
     roc_view.add_curve(macro_fpr, macro_tpr, "all latent, macro")
 
-    roc_view.save_and_close("ROC.png")
+    roc_view.save_and_close(os.path.join(experiment_id, "ROC.png"))
 
     # produce a clustering evaluation
-    cluster_silhouette_view(test_encodings, y_test, "silhouette_score.png", n_clusters=n_classes)
+    cluster_silhouette_view(test_encodings, y_test,
+                            os.path.join(experiment_id, "silhouette_score.png"),
+                            n_clusters=n_classes)
 
 
 if __name__ == "__main__":
-    gen_weights_filepath = sys.argv[1]
-    disc_weights_filepath = sys.argv[2]
+    experiment_id = sys.argv[1]
 
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
@@ -129,9 +130,10 @@ if __name__ == "__main__":
                     noise_dists=noise_dists,
                     meaningful_dists=meaningful_dists,
                     image_dist=image_dist,
-                    prior_params=prior_params,
-                    experiment_id="testing")
+                    prior_params=prior_params)
 
+    gen_weights_filepath = os.path.join(experiment_id, "gen_train_model.hdf5")
+    disc_weights_filepath = os.path.join(experiment_id, "disc_train_model.hdf5")
     model.load_weights(gen_weights_filepath, disc_weights_filepath)
 
-    test_mnist_performance(model, x_test, y_test, x_train, y_train)
+    test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_id)
