@@ -28,7 +28,7 @@ from sklearn import svm
 
 from learn.models.infogan import InfoGAN
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
-from learn.utils.visualization import ROCView, micro_macro_roc
+from learn.utils.visualization import ROCView, micro_macro_roc, cluster_silhouette_view
 
 
 batch_size = 256
@@ -84,6 +84,9 @@ def test_mnist_performance(model, x_test, y_test, x_train, y_train):
     roc_view.add_curve(macro_fpr, macro_tpr, "all latent, macro")
 
     roc_view.save_and_close("ROC.png")
+
+    # produce a clustering evaluation
+    cluster_silhouette_view(test_encodings, y_test, "silhouette_score.png", n_clusters=n_classes)
 
 
 if __name__ == "__main__":
