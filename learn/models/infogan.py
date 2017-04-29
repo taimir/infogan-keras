@@ -23,7 +23,7 @@ class InfoGAN(object):
     """
 
     def __init__(self, batch_size, image_shape, noise_dists,
-                 meaningful_dists, image_dist, prior_params, experiment_id="infogan"):
+                 meaningful_dists, image_dist, prior_params):
         """__init__
 
         :param batch_size - number of real samples passed at each iteration
@@ -40,7 +40,6 @@ class InfoGAN(object):
         self.meaningful_dists = meaningful_dists
         self.image_dist = image_dist
         self.prior_params = prior_params
-        self.experiment_id = experiment_id
 
         # Define meaningful dist output layers
         self.dist_output_layers = {}

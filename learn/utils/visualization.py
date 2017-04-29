@@ -4,11 +4,13 @@ import matplotlib
 matplotlib.use('Agg')
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
 
 import tensorflow as tf
 import numpy as np
 from scipy import interp
-from sklearn.metrics import auc, roc_curve
+from sklearn.metrics import auc, roc_curve, silhouette_score, silhouette_samples
 
 colors = ['#991012', '#c4884e', '#93bf8d', '#a3dbff']
 sns.set_palette(colors)
@@ -158,3 +160,52 @@ def micro_macro_roc(n_classes, y_expected, y_predicted):
         "micro": (micro_fpr, micro_tpr),
         "macro": (macro_fpr, macro_tpr)
     }
+
+
+def cluster_silhouette_view(X, y, file_path, n_clusters):
+    # initialize the figure
+    sns.set_style("whitegrid")
+
+    fig = plt.figure()
+    ax = plt.subplot(111)
+
+    plt.xlim([-0.5, 1.0])
+    plt.ylim([0, X.shape[0] + (n_clusters + 1) * 10])
+    plt.xlabel('Silhouette score per sample', size=10)
+    plt.ylabel('Samples in clusters', size=10)
+    plt.title('Silhouette scores', size=15)
+
+    # compute the silhoette average score of the clustering
+    score_avg = silhouette_score(X, y)
+    print("The average silhouette score is :", score_avg)
+
+    # Compute the silhouette scores for each sample
+    score_per_sample = silhouette_samples(X, y)
+
+    y_lower = 10
+    for i in range(n_clusters):
+        # scores of the samples in i'th cluster, sorted
+        score_per_sample_i = score_per_sample[y == i]
+        score_per_sample_i.sort()
+
+        size_cluster_i = score_per_sample_i.shape[0]
+
+        # do the plotting of the diagram
+        y_upper = y_lower + size_cluster_i
+
+        color = cm.spectral(float(i) / n_clusters)
+        plt.fill_betweenx(np.arange(y_lower, y_upper),
+                          0, score_per_sample_i, alpha=0.7,
+                          facecolor=color,
+                          edgecolor=color,
+                          label="cluster {}".format(i))
+
+        # Compute the new y_lower for next plot
+        y_lower = y_upper + 10  # 10 for the 0 samples
+
+    # The vertical line for average silhouette score of all the values
+    ax.axvline(x=score_avg, color="red", linestyle="--")
+    ax.set_yticks([])  # Clear the yaxis labels / ticks
+    ax.legend(loc='lower right', fancybox=True, shadow=True, ncol=1, prop={'size': 9},
+              frameon=True)
+    fig.savefig(filename=file_path, bbox_inches='tight')

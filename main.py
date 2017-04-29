@@ -25,7 +25,6 @@ KTF.set_session(get_session())
 import numpy as np
 from keras.datasets import mnist
 from keras.preprocessing.image import ImageDataGenerator
-from keras.utils import plot_model
 
 from learn.models.infogan import InfoGAN
 from learn.models.model_trainer import ModelTrainer
@@ -70,15 +69,15 @@ if __name__ == "__main__":
                     noise_dists=noise_dists,
                     meaningful_dists=meaningful_dists,
                     image_dist=image_dist,
-                    prior_params=prior_params,
-                    experiment_id=sys.argv[1])
+                    prior_params=prior_params)
 
-    plot_model(model.gen_train_model, to_file='gen_train_model.png')
-    plot_model(model.disc_train_model, to_file='disc_train_model.png')
-    plot_model(model.encoder_model, to_file='encoder_model.png')
-    plot_model(model.disc_model, to_file='disc_model.png')
-    plot_model(model.gen_model, to_file='gen_model.png')
+    # from keras.utils import plot_model
+    # plot_model(model.gen_train_model, to_file='gen_train_model.png')
+    # plot_model(model.disc_train_model, to_file='disc_train_model.png')
+    # plot_model(model.encoder_model, to_file='encoder_model.png')
+    # plot_model(model.disc_model, to_file='disc_model.png')
+    # plot_model(model.gen_model, to_file='gen_model.png')
 
-    model_trainer = ModelTrainer(model, data_generator, x_val, y_val)
+    model_trainer = ModelTrainer(model, data_generator, x_val, y_val, experiment_id=sys.argv[1])
 
     model_trainer.train()

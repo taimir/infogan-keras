@@ -1,11 +1,13 @@
 """
 Trainer for the InfoGan
 """
+import os
+
 import numpy as np
+import tensorflow as tf
 import keras.backend as K
 from keras.callbacks import TensorBoard
 from keras.utils.np_utils import to_categorical
-import tensorflow as tf
 
 from learn.utils.visualization import image_grid
 
@@ -15,7 +17,7 @@ class ModelTrainer(object):
     ModelTrainer implements the training procedure of InfoGAN
     """
 
-    def __init__(self, gan_model, data_generator, val_x, val_y):
+    def __init__(self, gan_model, data_generator, val_x, val_y, experiment_id):
         """__init__
 
         :param gan_model - the already initialized gan model
@@ -25,8 +27,9 @@ class ModelTrainer(object):
         self.data_generator = data_generator
         self.val_x = val_x
         self.val_y = val_y
+        self.experiment_id = experiment_id
 
-        self.board = TensorBoard(histogram_freq=20, log_dir=gan_model.experiment_id)
+        self.board = TensorBoard(histogram_freq=20, log_dir=experiment_id)
         self.board.set_model(self.model.disc_train_model)
 
         prior_params = self.model._assemble_prior_params()
@@ -37,7 +40,7 @@ class ModelTrainer(object):
         self.vis_feed_dict = dict(zip(self.model.disc_train_model.inputs + [K.learning_phase()],
                                       self.vis_data + [0]))
 
-    def train(self):
+    def train(self, n_epochs=100):
         # add a generated images summary
         gen_image_summaries = []
         for dist_name, sampled_latent in self.model.sampled_latents.items():
@@ -133,7 +136,7 @@ class ModelTrainer(object):
 
         # training iterations
         epoch_count = 0
-        for i in range(50):
+        for i in range(n_epochs):
             counter = 0
             for samples in self.data_generator():
                 disc_losses = self.model.train_disc_pass(samples)
@@ -190,8 +193,11 @@ class ModelTrainer(object):
                 if counter % 100 == 0:
                     # save the model weights
                     self.model.disc_train_model.save_weights(
-                        "disc_train_model.hdf5", overwrite=True)
-                    self.model.gen_train_model.save_weights("gen_train_model.hdf5", overwrite=True)
+                        os.path.join(self.experiment_id, "disc_train_model.hdf5"),
+                        overwrite=True)
+                    self.model.gen_train_model.save_weights(
+                        os.path.join(self.experiment_id, "gen_train_model.hdf5"),
+                        overwrite=True)
                     break
 
         self.board.on_train_end({})
