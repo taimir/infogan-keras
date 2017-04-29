@@ -38,17 +38,17 @@ class GeneratorNet(Network):
         self.layers = []
 
         # a fully connected is needed to bring the inputs to a shape suitable for convolutions
-        self.layers.append(Dense(units=1024, name="g_dense_1"))
+        self.layers.append(Dense(units=128, name="g_dense_1"))
         self.layers.append(BatchNormalization(name="g_dense_bn_1", axis=-1))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_1"))
 
-        self.layers.append(Dense(units=image_shape[0] // 4 * image_shape[1] // 4 * 128,
+        self.layers.append(Dense(units=image_shape[0] // 4 * image_shape[1] // 4 * 64,
                                  name="g_dense_2"))
         self.layers.append(BatchNormalization(name="g_dense_bn_2", axis=-1))
         self.layers.append(Activation(activation=K.relu, name="g_dense_activ_2"))
 
         # # # I use the `th` orientation of theano
-        self.layers.append(Reshape(target_shape=(image_shape[0] // 4, image_shape[1] // 4, 128),
+        self.layers.append(Reshape(target_shape=(image_shape[0] // 4, image_shape[1] // 4, 64),
                                    name="g_reshape"))
 
         # # start applying the deconv layers
@@ -66,8 +66,8 @@ class GeneratorNet(Network):
                                            strides=(2, 2),
                                            padding='same',
                                            data_format='channels_last',
-                                           name="g_deconv_2"))
-        self.layers.append(Activation(activation=K.sigmoid, name="g_deconv_activ_2"))
+                                           name="g_deconv_3"))
+        self.layers.append(Activation(activation=K.sigmoid, name="g_deconv_activ_3"))
 
 
 class SharedNet(Network):
@@ -81,15 +81,29 @@ class SharedNet(Network):
                                   name="d_conv_1"))
         self.layers.append(LeakyReLU(name="d_conv_activ_1"))
 
-        self.layers.append(Conv2D(filters=128,
+        self.layers.append(Conv2D(filters=64,
                                   kernel_size=(3, 3),
                                   padding="same",
                                   name="d_conv_2"))
         self.layers.append(BatchNormalization(name="d_conv_bn_2", axis=-1))
         self.layers.append(LeakyReLU(name="d_conv_activ_2"))
 
+        self.layers.append(Conv2D(filters=64,
+                                  kernel_size=(3, 3),
+                                  padding="same",
+                                  name="d_conv_3"))
+        self.layers.append(BatchNormalization(name="d_conv_bn_3", axis=-1))
+        self.layers.append(LeakyReLU(name="d_conv_activ_3"))
+
+        self.layers.append(Conv2D(filters=64,
+                                  kernel_size=(3, 3),
+                                  padding="same",
+                                  name="d_conv_4"))
+        self.layers.append(BatchNormalization(name="d_conv_bn_4", axis=-1))
+        self.layers.append(LeakyReLU(name="d_conv_activ_4"))
+
         self.layers.append(Flatten(name="d_flatten"))
-        self.layers.append(Dense(units=1024, name="d_dense_1"))
+        self.layers.append(Dense(units=128, name="d_dense_1"))
         self.layers.append(BatchNormalization(name="d_dense_bn_1", axis=-1))
 
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
