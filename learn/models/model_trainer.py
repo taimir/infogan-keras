@@ -34,10 +34,12 @@ class ModelTrainer(object):
 
         prior_params = self.model._assemble_prior_params()
         self.vis_data = [val_x[:self.model.batch_size]] + prior_params
-        self.board.validation_data = self.vis_data
+        self.board.validation_data = [val_x[:self.model.batch_size],
+                                      val_y[:self.model.batch_size]] + prior_params
 
         # feed disctionary for the images
-        self.vis_feed_dict = dict(zip(self.model.disc_train_model.inputs + [K.learning_phase()],
+        self.vis_feed_dict = dict(zip([self.model.real_input] +
+                                      self.model.prior_param_inputs + [K.learning_phase()],
                                       self.vis_data + [0]))
 
     def train(self, n_epochs=100):
@@ -130,9 +132,15 @@ class ModelTrainer(object):
         epoch_count = 0
         for i in range(n_epochs):
             counter = 0
-            for samples in self.data_generator():
-                disc_losses = self.model.train_disc_pass(samples)
+            for samples, labels in self.data_generator():
                 counter += 1
+
+                # use only 5% of the labeled data (semi-supervised simulation)
+                if counter % 20 == 0:
+                    disc_losses = self.model.train_disc_pass(samples, labels)
+                else:
+                    disc_losses = self.model.train_disc_pass(samples)
+
                 gen_losses = self.model.train_gen_pass()
 
                 if counter % 20 == 0:

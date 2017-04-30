@@ -25,6 +25,7 @@ KTF.set_session(get_session())
 import numpy as np
 from keras.datasets import mnist
 from keras.preprocessing.image import ImageDataGenerator
+from keras.utils.np_utils import to_categorical
 
 from learn.models.infogan import InfoGAN
 from learn.models.model_trainer import ModelTrainer
@@ -40,14 +41,15 @@ if __name__ == "__main__":
     x_test = x_test.reshape((-1, 28, 28, 1)) / 255
 
     x_val = x_train[:1000]
-    y_val = y_train[:1000]
+    y_val = to_categorical(y_train[:1000])
     x_train = x_train[1000:]
+    y_train = to_categorical(y_train[1000:])
 
     datagen = ImageDataGenerator(data_format='channels_last')
     datagen.fit(x_train)
 
     def data_generator():
-        return datagen.flow(x_train, batch_size=batch_size)
+        return datagen.flow(x_train, y_train, batch_size=batch_size)
 
     meaningful_dists = {'c1': Categorical(n_classes=10),
                         'c2': IsotropicGaussian(dim=1),
@@ -69,7 +71,8 @@ if __name__ == "__main__":
                     noise_dists=noise_dists,
                     meaningful_dists=meaningful_dists,
                     image_dist=image_dist,
-                    prior_params=prior_params)
+                    prior_params=prior_params,
+                    supervised_dist_name="c1")
 
     # from keras.utils import plot_model
     # plot_model(model.gen_train_model, to_file='gen_train_model.png')
@@ -81,3 +84,4 @@ if __name__ == "__main__":
     model_trainer = ModelTrainer(model, data_generator, x_val, y_val, experiment_id=sys.argv[1])
 
     model_trainer.train()
+    KTF.get_session().close()

@@ -130,10 +130,12 @@ if __name__ == "__main__":
                     noise_dists=noise_dists,
                     meaningful_dists=meaningful_dists,
                     image_dist=image_dist,
-                    prior_params=prior_params)
+                    prior_params=prior_params,
+                    supervised_dist_name="c1")
 
     gen_weights_filepath = os.path.join(experiment_id, "gen_train_model.hdf5")
     disc_weights_filepath = os.path.join(experiment_id, "disc_train_model.hdf5")
     model.load_weights(gen_weights_filepath, disc_weights_filepath)
 
     test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_id)
+    KTF.get_session().close()
