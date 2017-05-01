@@ -7,14 +7,15 @@ import keras.backend as K
 from keras.layers import Input,  Dense, Activation
 from keras.layers.merge import Concatenate
 from keras.layers.core import Lambda
-from keras.models import Model
+from keras.models import Model as K_Model
 from keras.activations import linear
 from keras.optimizers import Adam
 
+from learn.models.interfaces import Model
 from learn.networks.convnets import GeneratorNet, SharedNet, EncoderTop, DiscriminatorTop
 
 
-class InfoGAN(object):
+class InfoGAN(Model):
     """
     Puts together different networks to form the InfoGAN network as per:
 
@@ -23,7 +24,8 @@ class InfoGAN(object):
     """
 
     def __init__(self, batch_size, image_shape, noise_dists,
-                 meaningful_dists, image_dist, prior_params):
+                 meaningful_dists, image_dist,
+                 prior_params, supervised_dist_name=None):
         """__init__
 
         :param batch_size - number of real samples passed at each iteration
@@ -31,6 +33,7 @@ class InfoGAN(object):
         :param noise_dists - dict of {'<name>': Distribution, ...}
         :param meaningful_dists - dict of {'<name>': Distribution, ...}
         :param image_dist - Distribution of the image, for sampling after the generator
+        :param supervised_dist_name - name of the salient Distribution that can be supervised
         :param prior_params - dict of {'<name>': <param_dict>,...}
         """
 
@@ -39,6 +42,7 @@ class InfoGAN(object):
         self.noise_dists = noise_dists
         self.meaningful_dists = meaningful_dists
         self.image_dist = image_dist
+        self.supervised_dist_name = supervised_dist_name
         self.prior_params = prior_params
 
         # Define meaningful dist output layers
@@ -92,11 +96,17 @@ class InfoGAN(object):
 
         c_post_outputs_gen, mi_losses = self._add_enc_outputs_and_losses(enc_last_gen)
         # user later by tensorboard
-        self.c_post_outputs_gen = c_post_outputs_gen
+        self.c_post_outputs_gen = list(c_post_outputs_gen.values())
 
         # REAL DISC & ENCODER BRANCH
         # --------------------------------------------------------------------
         self.real_input = Input(shape=self.image_shape, name="d_input")
+        if self.supervised_dist_name:
+            assert self.supervised_dist_name in self.meaningful_dists, \
+                "The distribution that is supervised must be one of the meaningful_dists"
+            shape = (self.meaningful_dists[self.supervised_dist_name].sample_size(), )
+            self.real_labels = Input(shape=shape)
+
         real_shared_trunk = shared_net.apply(self.real_input)
 
         # discriminator
@@ -108,27 +118,35 @@ class InfoGAN(object):
         # encoder
         enc_last_real = encoder_top.apply(real_shared_trunk)
 
-        c_post_outputs_real, _ = self._add_enc_outputs_and_losses(enc_last_real, add_losses=False)
+        # sup_losses are potential supervised losses on salient distributions
+        c_post_outputs_real, sup_losses = self._add_enc_outputs_and_losses(enc_last_real,
+                                                                           is_generated=False)
+        enc_loss_outputs_real = list()
+        if self.supervised_dist_name:
+            enc_loss_outputs_real.append(c_post_outputs_real[self.supervised_dist_name])
+
+        enc_losses = merge_dicts(mi_losses, sup_losses)
+
         # user later by tensorboard
-        self.c_post_outputs_real = c_post_outputs_real
+        self.c_post_outputs_real = list(c_post_outputs_real.values())
 
         # GENERATOR MODEL
         # --------------------------------------------------------------------
-        self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
+        self.gen_model = K_Model(inputs=prior_param_inputs, outputs=[generated])
         # NOTE: the loss is not used, so it is arbitrary
         self.gen_model.compile(optimizer='adam', loss="mean_squared_error")
 
         # ENCODER MODEL
         # --------------------------------------------------------------------
-        self.encoder_model = Model(inputs=self.real_input,
-                                   outputs=c_post_outputs_real,
-                                   name="enc_model")
+        self.encoder_model = K_Model(inputs=self.real_input,
+                                     outputs=self.c_post_outputs_real,
+                                     name="enc_model")
         # NOTE: the loss is not used, so it is arbitrary
         self.encoder_model.compile(optimizer='adam', loss="mean_squared_error")
 
         # DISCRIMINATOR MODEL
         # --------------------------------------------------------------------
-        self.disc_model = Model(inputs=[self.real_input], outputs=[disc_last_real])
+        self.disc_model = K_Model(inputs=[self.real_input], outputs=[disc_last_real])
         # NOTE: the loss is not used, so it is arbitrary
         self.disc_model.compile(optimizer='adam', loss="mean_squared_error")
 
@@ -147,14 +165,19 @@ class InfoGAN(object):
             # NOTE: targets are ignored, cause it's clear those are real samples
             return -K.log(1 - gen_preds + K.epsilon()) / 2.0
 
-        self.disc_train_model = Model(inputs=[self.real_input] + prior_param_inputs,
-                                      outputs=[disc_last_gen, disc_last_real] + c_post_outputs_gen,
-                                      name="disc_train_model")
+        disc_train_inputs = [self.real_input,
+                             self.real_labels] if self.supervised_dist_name else [self.real_input]
+        disc_train_inputs += prior_param_inputs
+
+        self.disc_train_model = K_Model(inputs=disc_train_inputs,
+                                        outputs=[disc_last_gen, disc_last_real] +
+                                        self.c_post_outputs_gen + enc_loss_outputs_real,
+                                        name="disc_train_model")
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
-        disc_losses = merge_dicts(disc_losses, mi_losses)
+        disc_enc_losses = merge_dicts(disc_losses, enc_losses)
         self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.2),
-                                      loss=disc_losses)
+                                      loss=disc_enc_losses)
 
         # GENERATOR TRAINING MODEL
         # --------------------------------------------------------------------
@@ -178,9 +201,9 @@ class InfoGAN(object):
         gen_losses = {disc_gen_loss_layer.name: gen_loss}
         gen_losses = merge_dicts(gen_losses, mi_losses)
 
-        self.gen_train_model = Model(inputs=prior_param_inputs,
-                                     outputs=[disc_last_gen] + c_post_outputs_gen,
-                                     name="gen_train_model")
+        self.gen_train_model = K_Model(inputs=prior_param_inputs,
+                                       outputs=[disc_last_gen] + self.c_post_outputs_gen,
+                                       name="gen_train_model")
         self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
                                      loss=gen_losses)
 
@@ -260,9 +283,9 @@ class InfoGAN(object):
         sampled_image = self.image_dist.sample(params_dict)
         return sampled_image
 
-    def _add_enc_outputs_and_losses(self, layer, add_losses=True):
+    def _add_enc_outputs_and_losses(self, layer, is_generated=True):
         # add outputs for the parameters of all assumed meaninful distributions
-        posterior_outputs = []
+        posterior_outputs = {}
         mi_losses = {}
         for dist_name, dist in self.meaningful_dists.items():
             param_outputs_dict = self._add_dist_outputs(dist_name, dist, layer)
@@ -275,7 +298,8 @@ class InfoGAN(object):
                 param_outputs_dims.append(dim)
                 param_names_list.append(param_name)
 
-            loss_output_name = "e_loss_output_{}".format(dist_name)
+            suffix = "gen" if is_generated else "real"
+            loss_output_name = "e_loss_output_{}_{}".format(dist_name, suffix)
             if len(param_outputs_list) > 1:
                 merged_params = Concatenate(axis=-1,
                                             name=loss_output_name)(param_outputs_list)
@@ -284,15 +308,32 @@ class InfoGAN(object):
                 merged_params = Activation(activation=linear,
                                            name=loss_output_name)(merged_params)
 
-            posterior_outputs.append(merged_params)
+            posterior_outputs[dist_name] = merged_params
 
-            # build the mi_loss
-            if add_losses:
+            # build the mutual info & supervised losses
+            if is_generated:
                 samples = self.sampled_latents[dist_name]
-                mi_loss = self._build_mi_loss(samples, dist_name, dist, param_names_list,
+                mi_loss = self._build_mi_loss(samples, dist, param_names_list,
                                               param_outputs_dims)
 
                 mi_losses[loss_output_name] = mi_loss
+            else:
+
+                if self.supervised_dist_name == dist_name:
+                    loss = self._build_mi_loss(self.real_labels, dist,
+                                               param_names_list, param_outputs_dims)
+
+                    # since some real instances might not have a label, I assume that
+                    # this is indicated by all labels in the batch being set to 0 everywhere
+                    # (which is never the case for discrete labels, and almost impossible for
+                    # continuous labels)
+                    def wrapped_loss(targets, preds):
+                        labels_missing = K.all(K.equal(self.real_labels,
+                                                       K.zeros_like(self.real_labels)))
+                        return K.switch(labels_missing,
+                                        K.zeros((self.batch_size,)), loss(targets, preds))
+
+                    mi_losses[loss_output_name] = wrapped_loss
 
         return posterior_outputs, mi_losses
 
@@ -305,7 +346,7 @@ class InfoGAN(object):
             outputs[param] = out
         return outputs
 
-    def _build_mi_loss(self, samples, dist_name, dist, param_names_list, param_outputs_dims):
+    def _build_mi_loss(self, samples, dist, param_names_list, param_outputs_dims):
         def mutual_info_loss(targets, preds):
             # ignore the targets
             param_dict = {}
@@ -341,14 +382,36 @@ class InfoGAN(object):
         assert np.all(np.isclose(gen_score, disc_score1, atol=1.e-2))
         assert np.all(np.equal(gen_score, disc_score2))
 
-    def train_disc_pass(self, samples_batch):
+    def train_on_minibatch(self, samples, labels=None):
+        disc_losses = self._train_disc_pass(samples, labels)
+        gen_losses = self._train_gen_pass()
+
+        loss_logs = {}
+        for loss, loss_name in zip(gen_losses, self.gen_train_model.metrics_names):
+            loss_logs["g_" + loss_name] = loss
+
+        for loss, loss_name in zip(disc_losses, self.disc_train_model.metrics_names):
+            loss_logs["d_" + loss_name] = loss
+
+        return {'losses': loss_logs}
+
+    def _train_disc_pass(self, samples_batch, labels_batch=None):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
             len(self.disc_train_model.outputs)
+        inputs = [samples_batch]
+
+        if labels_batch is None and self.supervised_dist_name:
+            dim = self.meaningful_dists[self.supervised_dist_name].sample_size()
+            labels_batch = np.zeros((self.batch_size, dim))
+
+        if self.supervised_dist_name:
+            inputs += [labels_batch]
+
         prior_params = self._assemble_prior_params()
-        return self.disc_train_model.train_on_batch([samples_batch] + prior_params,
+        return self.disc_train_model.train_on_batch(inputs + prior_params,
                                                     dummy_targets)
 
-    def train_gen_pass(self):
+    def _train_gen_pass(self):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
             len(self.gen_train_model.outputs)
         prior_params = self._assemble_prior_params()

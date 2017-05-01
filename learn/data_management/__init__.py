@@ -1,0 +1,1 @@
+from .mnist_semi_supervised import SemiSupervisedMNISTProvider

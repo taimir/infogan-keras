@@ -21,3 +21,4 @@ That way the real & fake distributions are put on the same "level" from the very
 	- we sample from uniform distributions, just to cover all of the available latent space (e.g. Uniform)
 	- the posteriors are often uni-modal, however, as we want to make a prediction for the latent encoding (e.g. Gaussian)
 
+* The network size of the convnets in InfoGAN does not have to be too big - I managed to reproduce the 95 proc. classification accuracy from the paper with a smaller network.

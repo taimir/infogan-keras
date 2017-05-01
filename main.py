@@ -23,32 +23,17 @@ def get_session(gpu_fraction=0.8):
 KTF.set_session(get_session())
 
 import numpy as np
-from keras.datasets import mnist
-from keras.preprocessing.image import ImageDataGenerator
+from learn.models import InfoGAN
+from learn.train.observers import InfoganCheckpointer, InfoganTensorBoard, InfoganLogger
+from learn.train import ModelTrainer
+from learn.data_management import SemiSupervisedMNISTProvider
 
-from learn.models.infogan import InfoGAN
-from learn.models.model_trainer import ModelTrainer
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
 batch_size = 256
 
 if __name__ == "__main__":
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
-    x_train = x_train.reshape((-1, 28, 28, 1)) / 255
-    x_test = x_test.reshape((-1, 28, 28, 1)) / 255
-
-    x_val = x_train[:1000]
-    y_val = y_train[:1000]
-    x_train = x_train[1000:]
-
-    datagen = ImageDataGenerator(data_format='channels_last')
-    datagen.fit(x_train)
-
-    def data_generator():
-        return datagen.flow(x_train, batch_size=batch_size)
-
     meaningful_dists = {'c1': Categorical(n_classes=10),
                         'c2': IsotropicGaussian(dim=1),
                         'c3': IsotropicGaussian(dim=1)
@@ -69,7 +54,8 @@ if __name__ == "__main__":
                     noise_dists=noise_dists,
                     meaningful_dists=meaningful_dists,
                     image_dist=image_dist,
-                    prior_params=prior_params)
+                    prior_params=prior_params,
+                    supervised_dist_name="c1")
 
     # from keras.utils import plot_model
     # plot_model(model.gen_train_model, to_file='gen_train_model.png')
@@ -78,6 +64,21 @@ if __name__ == "__main__":
     # plot_model(model.disc_model, to_file='disc_model.png')
     # plot_model(model.gen_model, to_file='gen_model.png')
 
-    model_trainer = ModelTrainer(model, data_generator, x_val, y_val, experiment_id=sys.argv[1])
+    # provide the data
+    data_provider = SemiSupervisedMNISTProvider(batch_size)
+    val_x, val_y = data_provider.validation_data()
 
-    model_trainer.train()
+    # define observers (callbacks during training)
+    tb_observer = InfoganTensorBoard(model=model, experiment_dir=sys.argv[1], epoch_frequency=1,
+                                     val_x=val_x, val_y=val_y)
+    checkpoint_observer = InfoganCheckpointer(model=model, experiment_dir=sys.argv[1],
+                                              epoch_frequency=5)
+    logger_observer = InfoganLogger(model=model, epoch_frequency=1)
+
+    observers = [tb_observer, checkpoint_observer, logger_observer]
+
+    # train the model
+    model_trainer = ModelTrainer(model, data_provider, observers)
+    model_trainer.train(n_epochs=100)
+
+    KTF.get_session().close()
