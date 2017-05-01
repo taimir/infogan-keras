@@ -7,14 +7,15 @@ import keras.backend as K
 from keras.layers import Input,  Dense, Activation
 from keras.layers.merge import Concatenate
 from keras.layers.core import Lambda
-from keras.models import Model
+from keras.models import Model as K_Model
 from keras.activations import linear
 from keras.optimizers import Adam
 
+from learn.models.interfaces import Model
 from learn.networks.convnets import GeneratorNet, SharedNet, EncoderTop, DiscriminatorTop
 
 
-class InfoGAN(object):
+class InfoGAN(Model):
     """
     Puts together different networks to form the InfoGAN network as per:
 
@@ -131,21 +132,21 @@ class InfoGAN(object):
 
         # GENERATOR MODEL
         # --------------------------------------------------------------------
-        self.gen_model = Model(inputs=prior_param_inputs, outputs=[generated])
+        self.gen_model = K_Model(inputs=prior_param_inputs, outputs=[generated])
         # NOTE: the loss is not used, so it is arbitrary
         self.gen_model.compile(optimizer='adam', loss="mean_squared_error")
 
         # ENCODER MODEL
         # --------------------------------------------------------------------
-        self.encoder_model = Model(inputs=self.real_input,
-                                   outputs=self.c_post_outputs_real,
-                                   name="enc_model")
+        self.encoder_model = K_Model(inputs=self.real_input,
+                                     outputs=self.c_post_outputs_real,
+                                     name="enc_model")
         # NOTE: the loss is not used, so it is arbitrary
         self.encoder_model.compile(optimizer='adam', loss="mean_squared_error")
 
         # DISCRIMINATOR MODEL
         # --------------------------------------------------------------------
-        self.disc_model = Model(inputs=[self.real_input], outputs=[disc_last_real])
+        self.disc_model = K_Model(inputs=[self.real_input], outputs=[disc_last_real])
         # NOTE: the loss is not used, so it is arbitrary
         self.disc_model.compile(optimizer='adam', loss="mean_squared_error")
 
@@ -168,10 +169,10 @@ class InfoGAN(object):
                              self.real_labels] if self.supervised_dist_name else [self.real_input]
         disc_train_inputs += prior_param_inputs
 
-        self.disc_train_model = Model(inputs=disc_train_inputs,
-                                      outputs=[disc_last_gen, disc_last_real] +
-                                      self.c_post_outputs_gen + enc_loss_outputs_real,
-                                      name="disc_train_model")
+        self.disc_train_model = K_Model(inputs=disc_train_inputs,
+                                        outputs=[disc_last_gen, disc_last_real] +
+                                        self.c_post_outputs_gen + enc_loss_outputs_real,
+                                        name="disc_train_model")
         disc_losses = {disc_gen_loss_layer.name: disc_gen_loss,
                        disc_real_loss_layer.name: disc_real_loss}
         disc_enc_losses = merge_dicts(disc_losses, enc_losses)
@@ -200,9 +201,9 @@ class InfoGAN(object):
         gen_losses = {disc_gen_loss_layer.name: gen_loss}
         gen_losses = merge_dicts(gen_losses, mi_losses)
 
-        self.gen_train_model = Model(inputs=prior_param_inputs,
-                                     outputs=[disc_last_gen] + self.c_post_outputs_gen,
-                                     name="gen_train_model")
+        self.gen_train_model = K_Model(inputs=prior_param_inputs,
+                                       outputs=[disc_last_gen] + self.c_post_outputs_gen,
+                                       name="gen_train_model")
         self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
                                      loss=gen_losses)
 
@@ -381,7 +382,20 @@ class InfoGAN(object):
         assert np.all(np.isclose(gen_score, disc_score1, atol=1.e-2))
         assert np.all(np.equal(gen_score, disc_score2))
 
-    def train_disc_pass(self, samples_batch, labels_batch=None):
+    def train_on_minibatch(self, samples, labels=None):
+        disc_losses = self._train_disc_pass(samples, labels)
+        gen_losses = self._train_gen_pass()
+
+        loss_logs = {}
+        for loss, loss_name in zip(gen_losses, self.gen_train_model.metrics_names):
+            loss_logs["g_" + loss_name] = loss
+
+        for loss, loss_name in zip(disc_losses, self.disc_train_model.metrics_names):
+            loss_logs["d_" + loss_name] = loss
+
+        return {'losses': loss_logs}
+
+    def _train_disc_pass(self, samples_batch, labels_batch=None):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
             len(self.disc_train_model.outputs)
         inputs = [samples_batch]
@@ -397,7 +411,7 @@ class InfoGAN(object):
         return self.disc_train_model.train_on_batch(inputs + prior_params,
                                                     dummy_targets)
 
-    def train_gen_pass(self):
+    def _train_gen_pass(self):
         dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
             len(self.gen_train_model.outputs)
         prior_params = self._assemble_prior_params()

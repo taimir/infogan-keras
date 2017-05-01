@@ -25,19 +25,18 @@ from keras.datasets import mnist
 from keras.preprocessing.image import ImageDataGenerator
 from keras.utils.np_utils import to_categorical
 from sklearn import svm
+from sklearn.decomposition import PCA
 
-from learn.models.infogan import InfoGAN
+from learn.models import InfoGAN
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 from learn.utils.visualization import ROCView, micro_macro_roc, cluster_silhouette_view
 
 
 batch_size = 256
+n_classes = 10
 
 
-def test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_id):
-    roc_view = ROCView()
-    n_classes = 10
-
+def run_c1_only(roc_view, model, x_test, y_test, experiment_id):
     # encodings: list of arrays with shape (N, salient_dim)
     encodings_list = model.encode(x_test)
 
@@ -59,13 +58,67 @@ def test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_i
                           y_expected=to_categorical(y_test, num_classes=n_classes),
                           y_predicted=to_categorical(c1_map, num_classes=n_classes))
     micro_fpr, micro_tpr = res['micro']
-    roc_view.add_curve(micro_fpr, micro_tpr, "categorical only, micro")
+    roc_view.add_curve(micro_fpr, micro_tpr, "infogan c1 only, micro")
     macro_fpr, macro_tpr = res['macro']
-    roc_view.add_curve(macro_fpr, macro_tpr, "categorical only, macro")
+    roc_view.add_curve(macro_fpr, macro_tpr, "infogan c1 only, macro")
 
-    # check the performance based on all features
-    # with an SVM
-    test_encodings = np.concatenate(encodings_list, axis=1)
+
+def run_svm(roc_view, model, x_train, y_train, x_test, y_test, experiment_id):
+    # check the performance based on the original images with an SVM
+    # training only on 5 % of the training data, simulating a semi-supervised scenario
+    x_train = x_train.reshape((-1, 784))[:2500]
+    y_train = y_train[:2500]
+    x_test = x_test.reshape((-1, 784))
+
+    classifier = svm.SVC()
+    classifier.fit(x_train, y_train)
+
+    test_preds = classifier.predict(x_test)
+    acc = sum(y_test == test_preds) / len(y_test)
+    print("Class. accuracy based on original representation: {}".format(acc))
+
+    res = micro_macro_roc(n_classes,
+                          y_expected=to_categorical(y_test, num_classes=n_classes),
+                          y_predicted=to_categorical(test_preds, num_classes=n_classes))
+    micro_fpr, micro_tpr = res['micro']
+    roc_view.add_curve(micro_fpr, micro_tpr, "original SVM, micro")
+    macro_fpr, macro_tpr = res['macro']
+    roc_view.add_curve(macro_fpr, macro_tpr, "original SVM, macro")
+
+
+def run_pca_svm(roc_view, model, x_train, y_train, x_test, y_test, experiment_id, n_pca=12):
+    x_train = x_train.reshape((-1, 784))[:2500]
+    y_train = y_train[:2500]
+    x_test = x_test.reshape((-1, 784))
+
+    pca = PCA(n_components=n_pca)
+
+    pca.fit(x_train)
+
+    # check the performance based on n_pca PCA features with an SVM
+    test_encodings = pca.transform(x_test)
+    train_encodings = pca.transform(x_train)
+
+    classifier = svm.SVC()
+    classifier.fit(train_encodings, y_train)
+
+    test_preds = classifier.predict(test_encodings)
+    acc = sum(y_test == test_preds) / len(y_test)
+    print("Class. accuracy based on PCA latents: {}".format(acc))
+
+    res = micro_macro_roc(n_classes,
+                          y_expected=to_categorical(y_test, num_classes=n_classes),
+                          y_predicted=to_categorical(test_preds, num_classes=n_classes))
+    micro_fpr, micro_tpr = res['micro']
+    roc_view.add_curve(micro_fpr, micro_tpr, "pca latent, micro")
+    macro_fpr, macro_tpr = res['macro']
+    roc_view.add_curve(macro_fpr, macro_tpr, "pca latent, macro")
+
+
+def run_infogan_svm(roc_view, model, x_train, y_train, x_test, y_test, experiment_id):
+    # check the performance based on all infogan features with an SVM
+    test_encodings = np.concatenate(model.encode(x_test[:2500]), axis=1)
+    y_test = y_test[:2500]
     train_encodings = np.concatenate(model.encode(x_train), axis=1)
 
     classifier = svm.SVC()
@@ -73,22 +126,35 @@ def test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_i
 
     test_preds = classifier.predict(test_encodings)
     acc = sum(y_test == test_preds) / len(y_test)
-    print("Class. accuracy based on all latents: {}".format(acc))
+    print("Class. accuracy based on InfoGAN latents: {}".format(acc))
 
     res = micro_macro_roc(n_classes,
                           y_expected=to_categorical(y_test, num_classes=n_classes),
                           y_predicted=to_categorical(test_preds, num_classes=n_classes))
     micro_fpr, micro_tpr = res['micro']
-    roc_view.add_curve(micro_fpr, micro_tpr, "all latent, micro")
+    roc_view.add_curve(micro_fpr, micro_tpr, "infogan latent, micro")
     macro_fpr, macro_tpr = res['macro']
-    roc_view.add_curve(macro_fpr, macro_tpr, "all latent, macro")
+    roc_view.add_curve(macro_fpr, macro_tpr, "infogan latent, macro")
 
-    roc_view.save_and_close(os.path.join(experiment_id, "ROC.png"))
 
+def run_cluster_evaluation(model, x_test, y_test, experiment_id):
+    test_encodings = np.concatenate(model.encode(x_test), axis=1)
     # produce a clustering evaluation
     cluster_silhouette_view(test_encodings, y_test,
                             os.path.join(experiment_id, "silhouette_score.png"),
                             n_clusters=n_classes)
+
+
+def test_mnist_performance(model, x_test, y_test, x_train, y_train, experiment_id):
+    roc_view = ROCView()
+
+    run_svm(roc_view, model, x_train, y_train, x_test, y_test, experiment_id)
+    run_pca_svm(roc_view, model, x_train, y_train, x_test, y_test, experiment_id)
+    run_infogan_svm(roc_view, model, x_train, y_train, x_test, y_test, experiment_id)
+
+    run_cluster_evaluation(model, x_test, y_test, experiment_id)
+
+    roc_view.save_and_close(os.path.join(experiment_id, "ROC.png"))
 
 
 if __name__ == "__main__":
