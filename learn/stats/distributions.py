@@ -100,10 +100,13 @@ class Categorical(Distribution):
         p_vals = param_dict['p_vals']
         if K.backend() == 'tensorflow':
             import tensorflow as tf
-            samples = tf.multinomial(logits=tf.log(p_vals), num_samples=1)[:, 0]
+            shape = tf.shape(p_vals)
+            reshaped_pvals = tf.reshape(p_vals, [-1, self.n_classes])
+            samples = tf.multinomial(logits=tf.log(reshaped_pvals), num_samples=1)[:, 0]
             # a hack to turn it into one-hot
             onehot = tf.constant(np.eye(self.n_classes, dtype=np.float32))
-            return tf.nn.embedding_lookup(onehot, samples)
+            result = tf.nn.embedding_lookup(onehot, samples)
+            return tf.reshape(result, shape)
         else:
             from theano.tensor.shared_randomstreams import RandomStreams
             random = RandomStreams()

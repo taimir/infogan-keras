@@ -1,9 +1,9 @@
 import abc
+import six
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Model:
-
-    __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def train_on_minibatch(self, samples, labels):
