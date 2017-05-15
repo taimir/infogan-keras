@@ -1,123 +1,17 @@
-import abc
-import six
 from six.moves import reduce
 from operator import mul
 
+import nympy as np
 import keras.backend as K
 from keras.activations import linear
 from keras.models import Model as K_Model
-from keras.layers import Input, Reshape, Activation
+from keras.layers import Input, Reshape, Activation, TimeDistributed, Dense
 from keras.optimizers import Adam
 from keras.layers.core import Lambda
 from keras.layers.merge import Concatenate
 
-from learn.models.interfaces import Model
-
-
-@six.add_metaclass(abc.ABCMeta)
-class InfoganPrior:
-
-    def __init__(self,
-                 shape_prefix,
-                 meaningful_dists,
-                 noise_dists):
-        self.shape_prefix = shape_prefix
-        self.meaningful_dists = meaningful_dists
-        self.noise_dists = noise_dists
-
-    @abc.abstractmethod
-    def sample(self):
-        raise NotImplementedError
-
-
-@six.add_metaclass(abc.ABCMeta)
-class InfoganGenerator:
-
-    def __init__(self,
-                 shape_prefix,
-                 data_shape,
-                 meaningful_dists,
-                 noise_dists,
-                 data_q_dist,
-                 network):
-        self.shape_prefix = shape_prefix
-        self.data_shape = data_shape
-        self.meaningful_dists = meaningful_dists
-        self.noise_dists = noise_dists
-        self.data_q_dist = data_q_dist
-        self.network = network
-
-    @abc.abstractmethod
-    def generate(self, prior_samples):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def get_loss(self, disc_gen_output):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def freeze(self):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def unfreeze(self):
-        raise NotImplementedError
-
-
-@six.add_metaclass(abc.ABCMeta)
-class InfoganDiscriminator:
-
-    def __init__(self,
-                 network):
-        self.network = network
-
-    @abc.abstractmethod
-    def discriminate(self, samples):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def get_loss(self, gen_samples):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def freeze(self):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def unfreeze(self):
-        raise NotImplementedError
-
-
-@six.add_metaclass(abc.ABCMeta)
-class InfoganEncoder:
-
-    def __init__(self,
-                 meaningful_dists,
-                 supervised_dist,
-                 network):
-        self.meaningful_dists = meaningful_dists
-        self.supervised_dist = supervised_dist
-        self.network = network
-
-    @abc.abstractmethod
-    def encode(self, samples):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def get_supervised_loss(self, real_samples):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def get_mi_loss(self, gen_samples):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def freeze(self):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def unfreeze(self):
-        raise NotImplementedError
+from learn.models.interfaces import Model, InfoganPrior, InfoganGenerator, InfoganDiscriminator, \
+    InfoganEncoder
 
 
 class InfoganPriorImpl(InfoganPrior):
@@ -125,27 +19,24 @@ class InfoganPriorImpl(InfoganPrior):
     def __init__(self,
                  shape_prefix,
                  meaningful_dists,
-                 noise_dists):
-        super(InfoganPrior, self).__init__(shape_prefix, meaningful_dists, noise_dists)
+                 noise_dists,
+                 prior_params):
+
+        super(InfoganPrior, self).__init__(shape_prefix, meaningful_dists,
+                                           noise_dists, prior_params)
 
     def sample(self):
         samples = {}
         param_inputs = []
-        # all_param_names = []
-        # all_param_dist_names = []
         for name, dist in self.noise_dists.items():
             sample, param_inputs = self._sample_latent(name, dist)
             samples[name] = sample
             param_inputs += param_inputs
-            # all_param_names += param_names
-            # all_param_dist_names += [name] * len(param_names)
 
         for name, dist in self.meaningful_dists.items():
             sample, param_inputs = self._sample_latent(name, dist)
             samples[name] = sample
             param_inputs += param_inputs
-            # all_param_names += param_names
-            # all_param_dist_names += [name] * len(param_names)
 
         return samples, param_inputs
 
@@ -184,6 +75,16 @@ class InfoganPriorImpl(InfoganPrior):
                         output_shape=self.shape_prefix + (dist.sample_size(), ))(merged_params)
 
         return sample, param_inputs
+
+    def assemble_prior_params(self):
+        params = []
+        for dist_name, dist in self.noise_dists.items():
+            for param_name in dist.param_info():
+                params.append(self.prior_params[dist_name][param_name])
+        for dist_name, dist in self.meaningful_dists.items():
+            for param_name in dist.param_info():
+                params.append(self.prior_params[dist_name][param_name])
+        return params
 
 
 class InfoganGeneratorImpl(InfoganGenerator):
@@ -231,7 +132,6 @@ class InfoganGeneratorImpl(InfoganGenerator):
         sampled_image = K.reshape(sampled_image, self.shape_prefix + self.data_shape)
         return sampled_image
 
-    @abc.abstractmethod
     def get_loss(self, disc_gen_output):
         # add a dummy activation layer, just to be able to name it properly
         loss_layer_name = "G_gen_loss"
@@ -243,11 +143,9 @@ class InfoganGeneratorImpl(InfoganGenerator):
 
         {loss_layer_name: gen_loss}, [gen_output]
 
-    @abc.abstractmethod
     def freeze(self):
         self.network.freeze()
 
-    @abc.abstractmethod
     def unfreeze(self):
         self.network.unfreeze()
 
@@ -285,6 +183,145 @@ class InfoganDiscriminatorImpl(InfoganDiscriminator):
         self.network.freeze()
 
     def unfreeze(self):
+        self.network.unfreeze()
+
+
+class InfoganEncoderImpl(InfoganEncoder):
+
+    def __init__(self,
+                 recurrent,
+                 meaningful_dists,
+                 supervised_dist,
+                 network):
+
+        super(InfoganEncoder, self).__init__(recurrent, meaningful_dists,
+                                             supervised_dist, network)
+
+        # Define meaningful dist output layers
+        self.dist_output_layers = {}
+        for dist_name, dist in self.meaningful_dists.items():
+            info = dist.param_info()
+            self.dist_output_layers[dist_name] = {}
+            for param, (dim, activation) in info.items():
+                preact = Dense(dim, name="e_dense_{}_{}".format(dist_name, param))
+                if self.recurrent:
+                    preact = TimeDistributed(preact, name="e_time_{}_{}".format(dist_name, param))
+                act = Activation(activation, name="e_activ_{}_{}".format(dist_name, param))
+                self.dist_output_layers[dist_name][param] = [preact, act]
+
+        # define an ordering of params for each dist
+        self.orderings = {}
+        for dist_name, dist in self.meaningful_dists:
+            self.orderings[dist_name] = list()
+            for param_name, (dim, _) in dist.param_info().items():
+                self.orderings[dist_name].append((param_name, dim))
+
+    def encode(self, samples):
+        enc_preact = self.network.apply(samples)
+        encodings = self._add_enc_outputs(enc_preact)
+        return encodings
+
+    def _add_enc_outputs(self, enc_preact):
+        posterior_outputs = {}
+        for dist_name, dist in self.meaningful_dists.items():
+            param_outputs_dict = self._make_enc_outputs(dist_name, dist, enc_preact)
+            posterior_outputs[dist_name] = param_outputs_dict
+
+        return posterior_outputs
+
+    def _make_enc_outputs(self, dist_name, dist, layer):
+        outputs = {}
+        for param, param_layers in self.dist_output_layers[dist_name].items():
+            out = layer
+            for param_layer in param_layers:
+                out = param_layer(out)
+            outputs[param] = out
+        return outputs
+
+    def _make_loss_output(self, dist_name, param_outputs_dict):
+        param_outputs_list = []
+        for param_name, _ in self.orderings[dist_name]:
+            param_outputs_list.append(param_outputs_dict[param_name])
+
+        if len(param_outputs_list) > 1:
+            merged_params = Concatenate(axis=-1)(param_outputs_list)
+        else:
+            merged_params = param_outputs_list[0]
+
+        return merged_params
+
+    def get_mi_loss(self, gen_samples, gen_encodings):
+        loss_outputs = []
+        mi_losses = {}
+        for dist_name, dist in self.meaningful_dists.values():
+            param_outputs_dict = gen_encodings[dist_name]
+
+            loss_output_name = "E_mi_loss_{}".format(dist_name)
+            loss_output = self._make_loss_output(dist_name, param_outputs_dict)
+            loss_output = Activation(activation=linear,
+                                     name=loss_output_name)(loss_output)
+            loss_outputs.append(loss_output)
+
+            mi_loss = self._build_loss(gen_samples, dist, self.orderings[dist_name])
+            mi_losses[loss_output_name] = mi_loss
+
+    def _build_loss(self, samples, dist, param_infos):
+        def enc_loss(dummy, param_outputs):
+            # flatten the samples and params
+            samples_flat = K.reshape(samples, [-1, dist.sample_size()])
+            param_outputs_flat = K.reshape(param_outputs, [-1, sum(zip(*param_infos)[1])])
+
+            param_dict = {}
+            param_index = 0
+            for param_name, dim in param_infos:
+                param_dict[param_name] = param_outputs_flat[:, param_index:param_index + dim]
+                param_index += dim
+
+            loss = dist.nll(samples_flat, param_dict)
+            return loss
+
+        return enc_loss
+
+    def get_supervised_loss(self, real_labels, real_encodings):
+        if not self.supervised_dist:
+            return [], {}
+
+        dist = self.meaningful_dists[self.supervised_dist]
+        param_outputs_dict = real_encodings[self.supervised_dist]
+        loss = self._build_loss(real_labels, dist,
+                                self.orderings[self.supervised_dist])
+
+        # since some real instances might not have a label, I assume that
+        # this is indicated by all labels in the batch being set to 0 everywhere
+        # (which is never the case for discrete labels, and almost impossible for
+        # continuous labels)
+        def wrapped_loss(targets, preds):
+            labels_missing = K.all(K.equal(self.real_labels,
+                                           K.zeros_like(self.real_labels)))
+            return K.switch(labels_missing,
+                            K.zeros((self.batch_size,)), loss(targets, preds))
+
+        loss_output_name = "E_supervised_loss_{}".format(self.supervised_dist)
+        loss_output = self._make_loss_output(self.supervised_dist, param_outputs_dict)
+        loss_output = Activation(activation=linear,
+                                 name=loss_output_name)(loss_output)
+
+        [loss_output], {loss_output_name: wrapped_loss}
+
+    def freeze(self):
+        for param_layers_dict in self.dist_output_layers.values():
+            for param_layers in param_layers_dict.values():
+                for layer in param_layers:
+                    layer.trainable = False
+
+        self.network.freeze()
+
+    def unfreeze(self):
+        for param_layers_dict in self.dist_output_layers.values():
+            for param_layers in param_layers_dict.values():
+                for layer in param_layers:
+                    layer.trainable = True
+
         self.network.unfreeze()
 
 
@@ -356,6 +393,42 @@ class InfoGAN2(Model):
                                        name="gen_train_model")
         self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
                                      loss=gen_losses)
+
+    def _train_disc_pass(self, samples_batch, labels_batch=None):
+        dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
+            len(self.disc_train_model.outputs)
+        inputs = [samples_batch]
+
+        if labels_batch is None and self.supervised_dist_name:
+            dim = self.meaningful_dists[self.supervised_dist_name].sample_size()
+            labels_batch = np.zeros((self.batch_size, dim))
+
+        if self.supervised_dist_name:
+            inputs += [labels_batch]
+
+        prior_params = self.prior.assemble_prior_params()
+        return self.disc_train_model.train_on_batch(inputs + prior_params,
+                                                    dummy_targets)
+
+    def _train_gen_pass(self):
+        dummy_targets = [np.ones((self.batch_size,), dtype=np.float32)] * \
+            len(self.gen_train_model.outputs)
+        prior_params = self.prior.assemble_prior_params()
+        return self.gen_train_model.train_on_batch(prior_params,
+                                                   dummy_targets)
+
+    def train_on_minibatch(self, samples, labels=None):
+        disc_losses = self._train_disc_pass(samples, labels)
+        gen_losses = self._train_gen_pass()
+
+        loss_logs = {}
+        for loss, loss_name in zip(gen_losses, self.gen_train_model.metrics_names):
+            loss_logs["g_" + loss_name] = loss
+
+        for loss, loss_name in zip(disc_losses, self.disc_train_model.metrics_names):
+            loss_logs["d_" + loss_name] = loss
+
+        return {'losses': loss_logs}
 
 
 def merge_dicts(x, y):

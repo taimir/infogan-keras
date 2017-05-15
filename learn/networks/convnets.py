@@ -2,34 +2,12 @@
 Some network structures used by the InfoGAN
 """
 
-import abc
-
 import keras.backend as K
 from keras.layers import Conv2D, BatchNormalization, Activation, Dense, Conv2DTranspose, Flatten, \
     Reshape
 from keras.layers.advanced_activations import LeakyReLU
 
-
-class Network(object):
-
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self):
-        self.layers = []
-
-    def apply(self, inputs):
-        network = inputs
-        for layer in self.layers:
-            network = layer(network)
-        return network
-
-    def freeze(self):
-        for layer in self.layers:
-            layer.trainable = False
-
-    def unfreeze(self):
-        for layer in self.layers:
-            layer.trainable = True
+from learn.networks.interfaces import Network
 
 
 class GeneratorNet(Network):
@@ -68,6 +46,12 @@ class GeneratorNet(Network):
                                            data_format='channels_last',
                                            name="g_deconv_3"))
         self.layers.append(Activation(activation=K.sigmoid, name="g_deconv_activ_3"))
+
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
 
 
 class SharedNet(Network):
@@ -108,6 +92,12 @@ class SharedNet(Network):
 
         self.layers.append(LeakyReLU(name="d_dense_1_activ"))
 
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
+
 
 class EncoderTop(Network):
 
@@ -118,6 +108,12 @@ class EncoderTop(Network):
         self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
         self.layers.append(LeakyReLU(name="e_dense_activ_1"))
 
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
+
 
 class DiscriminatorTop(Network):
 
@@ -126,3 +122,42 @@ class DiscriminatorTop(Network):
 
         self.layers.append(Dense(1, name="d_classif_layer"))
         self.layers.append(Activation(activation=K.sigmoid, name="d_classif_activ"))
+
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
+
+
+class EncoderNetwork(Network):
+
+    def __init__(self, shared_net):
+        self.shared_net = shared_net
+        # clone the list
+        self.layers = shared_net.layers[:]
+
+        self.layers.append(Dense(128, name="e_dense_1"))
+        self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
+        self.layers.append(LeakyReLU(name="e_dense_activ_1"))
+
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
+
+
+class DiscriminatorNetwork(Network):
+
+    def __init__(self, shared_net):
+        self.shared_net = shared_net
+        # clone the list
+        self.layers = shared_net.layers[:]
+        self.layers.append(Dense(1, name="d_classif_layer"))
+
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
