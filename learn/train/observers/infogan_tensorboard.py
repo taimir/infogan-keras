@@ -16,13 +16,14 @@ class InfoganTensorBoard(TrainingObserver):
         self.logdir = experiment_dir
         self.sess = K.get_session()
 
-        prior_params = self.model._assemble_prior_params()
+        prior_params = self.model.prior.assemble_prior_params()
         self.board = TensorBoard(histogram_freq=20, log_dir=self.logdir)
         self.board.set_model(self.model.disc_train_model)
 
-        self.vis_data = [val_x[:self.model.batch_size]] + prior_params
-        self.board.validation_data = [val_x[:self.model.batch_size],
-                                      val_y[:self.model.batch_size]] + prior_params
+        self.batch_size = self.model.shape_prefix[0]
+        self.vis_data = [val_x[:self.batch_size]] + prior_params
+        self.board.validation_data = [val_x[:self.batch_size],
+                                      val_y[:self.batch_size]] + prior_params
 
         # feed disctionary for the images
         self.vis_feed_dict = dict(zip([self.model.real_input] +
@@ -49,7 +50,7 @@ class InfoganTensorBoard(TrainingObserver):
                 for i in range(10):
                     which = tf.where(tf.equal(sampled_class, i))
                     # select only the images that were produced from c1 = i
-                    selected = tf.gather(self.model.tensor_generated, which)
+                    selected = tf.gather(self.model.generated, which)
                     selected = tf.reshape(selected, (-1, 28, 28, 1))
                     grid = image_grid(input_tensor=selected,
                                       grid_shape=(5, 5),
@@ -61,10 +62,10 @@ class InfoganTensorBoard(TrainingObserver):
 
     def _init_real_enc_summaries(self):
         # add Encoder results summaries
-        for output in self.model.c_post_outputs_real:
-            if "c1" in output.name:
+        for dist_name, stats in self.model.real_encodings.items():
+            if "c1" == dist_name:
                 for i in range(10):
-                    output_class = K.argmax(output, axis=1)
+                    output_class = K.argmax(stats["p_vals"], axis=1)
                     which = tf.where(tf.equal(output_class, i))
 
                     # select only the images that were encoded as c1 = i
@@ -81,14 +82,14 @@ class InfoganTensorBoard(TrainingObserver):
                     self.real_enc_image_summaries.append(summary)
 
     def _init_gen_enc_summaries(self):
-        for output in self.model.c_post_outputs_gen:
-            if "c1" in output.name:
+        for dist_name, stats in self.model.gen_encodings.items():
+            if "c1" == dist_name:
                 for i in range(10):
-                    output_class = K.argmax(output, axis=1)
+                    output_class = K.argmax(stats["p_vals"], axis=1)
                     which = tf.where(tf.equal(output_class, i))
 
                     # select only the images that were encoded as c1 = i
-                    selected = tf.gather(self.model.tensor_generated, which)
+                    selected = tf.gather(self.model.generated, which)
                     selected = tf.reshape(selected, (-1, 28, 28, 1))
 
                     grid = image_grid(input_tensor=selected,
@@ -103,7 +104,7 @@ class InfoganTensorBoard(TrainingObserver):
     def _init_gen_cont_summaries(self):
         # summaries for the continuous variables, covering the range from -1 to 1
         for i in range(10):
-            selected = tf.reshape(self.model.tensor_generated, (-1, 28, 28, 1))
+            selected = tf.reshape(self.model.generated, (-1, 28, 28, 1))
             grid = image_grid(input_tensor=selected,
                               grid_shape=(10, 10),
                               image_shape=(28, 28, 1))

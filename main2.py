@@ -1,6 +1,7 @@
 """
 Example implementation of InfoGAN
 """
+import sys
 import os
 import tensorflow as tf
 import keras.backend.tensorflow_backend as KTF
@@ -27,7 +28,7 @@ from learn.models.infogan_advanced import InfoganDiscriminatorImpl, InfoganPrior
     InfoganEncoderImpl, InfoganGeneratorImpl
 
 # InfoganCheckpointer, InfoganTensorBoard, InfoganLogger
-from learn.train.observers import InfoganLogger
+from learn.train.observers import InfoganLogger, InfoganTensorBoard
 from learn.train import ModelTrainer
 from learn.data_management import SemiSupervisedMNISTProvider
 from learn.networks.convnets import GeneratorNet, EncoderNetwork, SharedNet, DiscriminatorNetwork
@@ -95,8 +96,10 @@ if __name__ == "__main__":
 
     # define observers (callbacks during training)
     logger_observer = InfoganLogger(model=model, epoch_frequency=1)
+    tb_observer = InfoganTensorBoard(model=model, experiment_dir=sys.argv[1], epoch_frequency=1,
+                                     val_x=val_x, val_y=val_y)
 
-    observers = [logger_observer]
+    observers = [logger_observer, tb_observer]
 
     # train the model
     model_trainer = ModelTrainer(model, data_provider, observers)
