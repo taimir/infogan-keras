@@ -1,26 +1,25 @@
 """
 Example implementation of InfoGAN
 """
-# import sys
-# import os
-# import tensorflow as tf
+import os
+import tensorflow as tf
 import keras.backend.tensorflow_backend as KTF
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 
-# def get_session(gpu_fraction=0.8):
-# num_threads = os.environ.get('OMP_NUM_THREADS')
-# gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
-# allow_growth=True)
+def get_session(gpu_fraction=0.2):
+    num_threads = os.environ.get('OMP_NUM_THREADS')
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
+                                allow_growth=True)
 
-# if num_threads:
-# return tf.Session(config=tf.ConfigProto(
-# gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
-# else:
-# return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    if num_threads:
+        return tf.Session(config=tf.ConfigProto(
+            gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
+    else:
+        return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
-# KTF.set_session(get_session())
+KTF.set_session(get_session())
 
 import numpy as np
 from learn.models.infogan_advanced import InfoGAN2
@@ -31,7 +30,7 @@ from learn.models.infogan_advanced import InfoganDiscriminatorImpl, InfoganPrior
 from learn.train.observers import InfoganLogger
 from learn.train import ModelTrainer
 from learn.data_management import SemiSupervisedMNISTProvider
-
+from learn.networks.convnets import GeneratorNet, EncoderNetwork, SharedNet, DiscriminatorNetwork
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
@@ -53,25 +52,35 @@ if __name__ == "__main__":
                           'std': np.ones((batch_size, 62), dtype=np.float32)}
                     }
 
-    prior = InfoganPriorImpl(shape_prefix=(),
+    prior = InfoganPriorImpl(shape_prefix=(batch_size, ),
                              meaningful_dists=meaningful_dists,
                              noise_dists=noise_dists,
                              prior_params=prior_params)
 
-    generator = InfoganGeneratorImpl(shape_prefix=(),
+    gen_net = GeneratorNet(image_shape=(28, 28, 1))
+    generator = InfoganGeneratorImpl(shape_prefix=(batch_size, ),
+                                     data_param_shape=(28, 28, 1),
                                      data_shape=(28, 28, 1),
                                      meaningful_dists=meaningful_dists,
                                      noise_dists=noise_dists,
                                      data_q_dist=image_dist,
-                                     network=)
+                                     network=gen_net)
 
-    discriminator = InfoganDiscriminatorImpl(network=)
+    shared_net = SharedNet()
 
-    encoder = InfoganEncoderImpl(recurrent=False,
+    disc_net = DiscriminatorNetwork(shared_net=shared_net)
+    discriminator = InfoganDiscriminatorImpl(network=disc_net)
+
+    enc_net = EncoderNetwork(shared_net=shared_net)
+    encoder = InfoganEncoderImpl(shape_prefix=(batch_size, ),
+                                 recurrent=False,
                                  meaningful_dists=meaningful_dists,
                                  supervised_dist=None,
-                                 network=)
-    model = InfoGAN2(prior=prior,
+                                 network=enc_net)
+
+    model = InfoGAN2(shape_prefix=(batch_size, ),
+                     data_shape=(28, 28, 1),
+                     prior=prior,
                      generator=generator,
                      discriminator=discriminator,
                      encoder=encoder)

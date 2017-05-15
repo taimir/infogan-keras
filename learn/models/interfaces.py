@@ -37,12 +37,14 @@ class InfoganGenerator:
 
     def __init__(self,
                  shape_prefix,
+                 data_param_shape,
                  data_shape,
                  meaningful_dists,
                  noise_dists,
                  data_q_dist,
                  network):
         self.shape_prefix = shape_prefix
+        self.data_param_shape = data_param_shape
         self.data_shape = data_shape
         self.meaningful_dists = meaningful_dists
         self.noise_dists = noise_dists
@@ -94,10 +96,12 @@ class InfoganDiscriminator:
 class InfoganEncoder:
 
     def __init__(self,
+                 shape_prefix,
                  recurrent,
                  meaningful_dists,
                  supervised_dist,
                  network):
+        self.shape_prefix = shape_prefix
         self.recurrent = recurrent
         self.meaningful_dists = meaningful_dists
         self.supervised_dist = supervised_dist
@@ -113,6 +117,10 @@ class InfoganEncoder:
 
     @abc.abstractmethod
     def get_mi_loss(self, gen_samples):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_labels_input(self):
         raise NotImplementedError
 
     @abc.abstractmethod
