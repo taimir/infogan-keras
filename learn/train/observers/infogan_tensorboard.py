@@ -20,10 +20,13 @@ class InfoganTensorBoard(TrainingObserver):
         self.board = TensorBoard(histogram_freq=20, log_dir=self.logdir)
         self.board.set_model(self.model.disc_train_model)
 
-        self.batch_size = self.model.shape_prefix[0]
+        self.batch_size = self.model.batch_size
         self.vis_data = [val_x[:self.batch_size]] + prior_params
-        self.board.validation_data = [val_x[:self.batch_size],
-                                      val_y[:self.batch_size]] + prior_params
+        board_data = [val_x[:self.batch_size]]
+        if self.model.encoder.supervised_dist:
+            board_data += [val_y[:self.batch_size]]
+        board_data += prior_params
+        self.board.validation_data = board_data
 
         # feed disctionary for the images
         self.vis_feed_dict = dict(zip([self.model.real_input] +

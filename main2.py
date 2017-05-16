@@ -53,13 +53,13 @@ if __name__ == "__main__":
                           'std': np.ones((batch_size, 62), dtype=np.float32)}
                     }
 
-    prior = InfoganPriorImpl(shape_prefix=(batch_size, ),
+    prior = InfoganPriorImpl(shape_prefix=(),
                              meaningful_dists=meaningful_dists,
                              noise_dists=noise_dists,
                              prior_params=prior_params)
 
     gen_net = GeneratorNet(image_shape=(28, 28, 1))
-    generator = InfoganGeneratorImpl(shape_prefix=(batch_size, ),
+    generator = InfoganGeneratorImpl(shape_prefix=(),
                                      data_param_shape=(28, 28, 1),
                                      data_shape=(28, 28, 1),
                                      meaningful_dists=meaningful_dists,
@@ -73,13 +73,15 @@ if __name__ == "__main__":
     discriminator = InfoganDiscriminatorImpl(network=disc_net)
 
     enc_net = EncoderNetwork(shared_net=shared_net)
-    encoder = InfoganEncoderImpl(shape_prefix=(batch_size, ),
+    encoder = InfoganEncoderImpl(batch_size=batch_size,
+                                 shape_prefix=(),
                                  recurrent=False,
                                  meaningful_dists=meaningful_dists,
                                  supervised_dist=None,
                                  network=enc_net)
 
-    model = InfoGAN2(shape_prefix=(batch_size, ),
+    model = InfoGAN2(batch_size=batch_size,
+                     shape_prefix=(),
                      data_shape=(28, 28, 1),
                      prior=prior,
                      generator=generator,

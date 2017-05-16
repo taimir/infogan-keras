@@ -1,11 +1,8 @@
-from six.moves import reduce
-from operator import mul
-
 import numpy as np
 import keras.backend as K
 from keras.activations import linear
 from keras.models import Model as K_Model
-from keras.layers import Input, Reshape, Activation, TimeDistributed, Dense
+from keras.layers import Input, Activation, TimeDistributed, Dense
 from keras.optimizers import Adam
 from keras.layers.core import Lambda
 from keras.layers.merge import Concatenate
@@ -46,7 +43,7 @@ class InfoganPriorImpl(InfoganPrior):
         param_dims = []
 
         for param_name, (dim, _) in dist.param_info().items():
-            param_input = Input(batch_shape=self.shape_prefix + (dim, ),
+            param_input = Input(shape=self.shape_prefix + (dim, ),
                                 name="g_input_{}_{}".format(dist_name, param_name))
             param_inputs.append(param_input)
             param_dims.append(dim)
@@ -55,14 +52,13 @@ class InfoganPriorImpl(InfoganPrior):
         def sampling_fn(merged_params):
             param_dict = {}
             i = 0
-            for j, dim in enumerate(param_dims):
+            for param_name, dim in zip(param_names, param_dims):
                 param = merged_params[:, i:i + dim]
-                flattened_param = K.reshape(param, (-1, dim))
-                param_dict[param_names[j]] = flattened_param
+                param_dict[param_name] = param
                 i += dim
 
-            flattened_sample = dist.sample(param_dict)
-            return K.reshape(flattened_sample, self.shape_prefix + (dist.sample_size(), ))
+            sample = dist.sample(param_dict)
+            return sample
 
         if len(param_inputs) > 1:
             merged_params = Concatenate(axis=-1,
@@ -72,7 +68,7 @@ class InfoganPriorImpl(InfoganPrior):
 
         sample = Lambda(function=sampling_fn,
                         name="g_sample_{}".format(dist_name),
-                        output_shape=self.shape_prefix[1:] + (dist.sample_size(), ))(merged_params)
+                        output_shape=self.shape_prefix + (dist.sample_size(), ))(merged_params)
 
         return sample, param_inputs
 
@@ -113,11 +109,8 @@ class InfoganGeneratorImpl(InfoganGenerator):
 
         generation_params = self.network.apply(inputs=merged_samples)
 
-        joint_param_length = reduce(mul, self.data_param_shape, 1)
-        generation_params = Reshape((-1, joint_param_length))(generation_params)
-
         generated = Lambda(function=self._sample_data,
-                           output_shape=self.shape_prefix[1:] + self.data_shape,
+                           output_shape=self.shape_prefix + self.data_shape,
                            name="g_x_sampling")(generation_params)
 
         return generated
@@ -126,12 +119,17 @@ class InfoganGeneratorImpl(InfoganGenerator):
         params_dict = {}
         i = 0
 
+        # put the last dimension in front
+        ndim = K.ndim(params)
+        permutation = [ndim - 1] + list(range(0, ndim - 1))
+        params = K.permute_dimensions(params, permutation)
         for param_name, (param_dim, param_activ) in self.data_q_dist.param_info().items():
-            param = params[:, i:i + param_dim]
+            param = params[i:i + param_dim]
+            reverse_permutation = list(range(1, ndim)) + [0]
+            param = K.permute_dimensions(param, reverse_permutation)
             params_dict[param_name] = param_activ(param)
 
         sampled_image = self.data_q_dist.sample(params_dict)
-        sampled_image = K.reshape(sampled_image, self.shape_prefix + self.data_shape)
         return sampled_image
 
     def get_loss(self, disc_gen_output):
@@ -191,14 +189,15 @@ class InfoganDiscriminatorImpl(InfoganDiscriminator):
 class InfoganEncoderImpl(InfoganEncoder):
 
     def __init__(self,
+                 batch_size,
                  shape_prefix,
                  recurrent,
                  meaningful_dists,
                  supervised_dist,
                  network):
 
-        super(InfoganEncoderImpl, self).__init__(shape_prefix, recurrent, meaningful_dists,
-                                                 supervised_dist, network)
+        super(InfoganEncoderImpl, self).__init__(batch_size, shape_prefix, recurrent,
+                                                 meaningful_dists, supervised_dist, network)
 
         # Define meaningful dist output layers
         self.dist_output_layers = {}
@@ -273,16 +272,19 @@ class InfoganEncoderImpl(InfoganEncoder):
     def _build_loss(self, samples, dist, param_infos):
         def enc_loss(dummy, param_outputs):
             # flatten the samples and params
-            samples_flat = K.reshape(samples, [-1, dist.sample_size()])
-            param_outputs_flat = K.reshape(param_outputs, [-1, sum(list(zip(*param_infos))[1])])
-
             param_dict = {}
             param_index = 0
+            ndim = K.ndim(param_outputs)
+            permutation = [ndim - 1] + list(range(0, ndim - 1))
+            param_outputs = K.permute_dimensions(param_outputs, permutation)
             for param_name, dim in param_infos:
-                param_dict[param_name] = param_outputs_flat[:, param_index:param_index + dim]
+                param = param_outputs[param_index:param_index + dim]
+                reverse_permutation = list(range(1, ndim)) + [0]
+                param = K.permute_dimensions(param, reverse_permutation)
+                param_dict[param_name] = param
                 param_index += dim
 
-            loss = dist.nll(samples_flat, param_dict)
+            loss = dist.nll(samples, param_dict)
             return loss
 
         return enc_loss
@@ -304,7 +306,7 @@ class InfoganEncoderImpl(InfoganEncoder):
             labels_missing = K.all(K.equal(self.real_labels,
                                            K.zeros_like(self.real_labels)))
             return K.switch(labels_missing,
-                            K.zeros(reduce(mul, self.shape_prefix, 1)), loss(targets, preds))
+                            K.zeros((self.batch_size, ) + self.shape_prefix, 1), loss(targets, preds))
 
         loss_output_name = "E_supervised_loss_{}".format(self.supervised_dist)
         loss_output = self._make_loss_output(self.supervised_dist, param_outputs_dict)
@@ -317,7 +319,7 @@ class InfoganEncoderImpl(InfoganEncoder):
         if not self.supervised_dist:
             return None
         dim = self.meaningful_dists[self.supervised_dist].sample_size()
-        return Input(batch_shape=self.shape_prefix + (dim, ), name="labels_input")
+        return Input(shape=self.shape_prefix + (dim, ), name="labels_input")
 
     def freeze(self):
         for param_layers_dict in self.dist_output_layers.values():
@@ -342,12 +344,14 @@ class InfoGAN2(Model):
     """
 
     def __init__(self,
+                 batch_size,
                  shape_prefix,
                  data_shape,
                  prior,
                  generator,
                  discriminator,
                  encoder):
+        self.batch_size = batch_size
         self.shape_prefix = shape_prefix
         self.data_shape = data_shape
         self.prior = prior
@@ -359,7 +363,7 @@ class InfoGAN2(Model):
         self.sampled_latents, self.prior_param_inputs = self.prior.sample()
         self.generated = self.generator.generate(self.sampled_latents)
 
-        self.real_input = Input(batch_shape=self.shape_prefix + self.data_shape,
+        self.real_input = Input(shape=self.shape_prefix + self.data_shape,
                                 name="real_data_input")
         self.real_labels = None
         self.real_labels = encoder.get_labels_input()
@@ -413,13 +417,13 @@ class InfoGAN2(Model):
                                      loss=gen_losses)
 
     def _train_disc_pass(self, samples_batch, labels_batch=None):
-        dummy_targets = [np.ones(self.shape_prefix, dtype=np.float32)] * \
+        dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix, dtype=np.float32)] * \
             len(self.disc_train_model.outputs)
         inputs = [samples_batch]
 
         if labels_batch is None and self.encoder.supervised_dist:
             dim = self.meaningful_dists[self.supervised_dist_name].sample_size()
-            labels_batch = np.zeros(self.shape_prefix + (dim, ))
+            labels_batch = np.zeros((self.batch_size,) + self.shape_prefix + (dim, ))
 
         if self.encoder.supervised_dist:
             inputs += [labels_batch]
@@ -429,7 +433,7 @@ class InfoGAN2(Model):
                                                     dummy_targets)
 
     def _train_gen_pass(self):
-        dummy_targets = [np.ones(self.shape_prefix, dtype=np.float32)] * \
+        dummy_targets = [np.ones((self.batch_size,) + self.shape_prefix, dtype=np.float32)] * \
             len(self.gen_train_model.outputs)
         prior_params = self.prior.assemble_prior_params()
         return self.gen_train_model.train_on_batch(prior_params,

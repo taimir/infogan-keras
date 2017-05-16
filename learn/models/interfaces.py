@@ -96,11 +96,13 @@ class InfoganDiscriminator:
 class InfoganEncoder:
 
     def __init__(self,
+                 batch_size,
                  shape_prefix,
                  recurrent,
                  meaningful_dists,
                  supervised_dist,
                  network):
+        self.batch_size = batch_size
         self.shape_prefix = shape_prefix
         self.recurrent = recurrent
         self.meaningful_dists = meaningful_dists
