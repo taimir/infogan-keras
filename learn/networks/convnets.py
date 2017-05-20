@@ -130,6 +130,49 @@ class DiscriminatorTop(Network):
         return network
 
 
+class GeneratorNetwork(Network):
+
+    def __init__(self, image_shape):
+        self.layers = []
+
+        # a fully connected is needed to bring the inputs to a shape suitable for convolutions
+        self.layers.append(Dense(units=128, name="g_dense_1"))
+        self.layers.append(BatchNormalization(name="g_dense_bn_1", axis=-1))
+        self.layers.append(Activation(activation=K.relu, name="g_dense_activ_1"))
+
+        self.layers.append(Dense(units=image_shape[0] // 4 * image_shape[1] // 4 * 64,
+                                 name="g_dense_2"))
+        self.layers.append(BatchNormalization(name="g_dense_bn_2", axis=-1))
+        self.layers.append(Activation(activation=K.relu, name="g_dense_activ_2"))
+
+        # # # I use the `th` orientation of theano
+        self.layers.append(Reshape(target_shape=(image_shape[0] // 4, image_shape[1] // 4, 64),
+                                   name="g_reshape"))
+
+        # # start applying the deconv layers
+        self.layers.append(Conv2DTranspose(filters=64, kernel_size=(3, 3),
+                                           strides=(2, 2),
+                                           padding='same',
+                                           data_format='channels_last',
+                                           name="g_deconv_1"))
+        self.layers.append(BatchNormalization(name="g_deconv_bn_1", axis=-1))
+        self.layers.append(Activation(activation=K.relu, name="g_deconv_activ_1"))
+
+        # # TODO: if we'll be generating color images, this needs to produce
+        # # a 1024 * image_shape[2] number of channels
+        self.layers.append(Conv2DTranspose(filters=image_shape[2], kernel_size=(3, 3),
+                                           strides=(2, 2),
+                                           padding='same',
+                                           data_format='channels_last',
+                                           name="g_deconv_3"))
+
+    def apply(self, inputs):
+        network = inputs
+        for layer in self.layers:
+            network = layer(network)
+        return network
+
+
 class EncoderNetwork(Network):
 
     def __init__(self, shared_net):

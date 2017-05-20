@@ -31,7 +31,7 @@ from learn.models.infogan_advanced import InfoganDiscriminatorImpl, InfoganPrior
 from learn.train.observers import InfoganLogger, InfoganTensorBoard
 from learn.train import ModelTrainer
 from learn.data_management import SemiSupervisedMNISTProvider
-from learn.networks.convnets import GeneratorNet, EncoderNetwork, SharedNet, DiscriminatorNetwork
+from learn.networks.convnets import GeneratorNetwork, EncoderNetwork, SharedNet, DiscriminatorNetwork
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                              noise_dists=noise_dists,
                              prior_params=prior_params)
 
-    gen_net = GeneratorNet(image_shape=(28, 28, 1))
+    gen_net = GeneratorNetwork(image_shape=(28, 28, 1))
     generator = InfoganGeneratorImpl(shape_prefix=(),
                                      data_param_shape=(28, 28, 1),
                                      data_shape=(28, 28, 1),

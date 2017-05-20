@@ -11,6 +11,119 @@ from learn.models.interfaces import Model, InfoganPrior, InfoganGenerator, Infog
     InfoganEncoder
 
 
+class InfoGAN2(Model):
+    """
+    Refactored version of infogan
+    """
+
+    def __init__(self,
+                 batch_size,
+                 shape_prefix,
+                 data_shape,
+                 prior,
+                 generator,
+                 discriminator,
+                 encoder):
+        self.batch_size = batch_size
+        self.shape_prefix = shape_prefix
+        self.data_shape = data_shape
+        self.prior = prior
+        self.generator = generator
+        self.discriminator = discriminator
+        self.encoder = encoder
+
+        # PUTTING IT TOGETHER
+        self.sampled_latents, self.prior_param_inputs = self.prior.sample()
+        self.generated = self.generator.generate(self.sampled_latents)
+
+        self.real_input = Input(shape=self.shape_prefix + self.data_shape,
+                                name="real_data_input")
+        self.real_labels = encoder.get_labels_input()
+
+        self.gen_encodings = self.encoder.encode(self.generated)
+        mi_losses, E_gen_loss_outputs = self.encoder.get_mi_loss(self.sampled_latents,
+                                                                 self.gen_encodings)
+
+        self.real_encodings = self.encoder.encode(self.real_input)
+        # this can be empty if the encoder is not supervised
+        sup_losses, E_real_loss_outputs = self.encoder.get_supervised_loss(self.real_labels,
+                                                                           self.real_encodings)
+
+        enc_losses = merge_dicts(mi_losses, sup_losses)
+
+        self.disc_gen = self.discriminator.discriminate(self.generated)
+        self.disc_real = self.discriminator.discriminate(self.real_input)
+        disc_losses, D_loss_outputs = self.discriminator.get_loss(
+            self.disc_real, self.disc_gen)
+
+        # DISCRIMINATOR TRAINING MODEL
+        self.generator.freeze()
+
+        disc_train_inputs = [self.real_input]
+        if self.encoder.supervised_dist:
+            disc_train_inputs.append(self.real_labels)
+        disc_train_inputs += self.prior_param_inputs
+
+        disc_train_outputs = D_loss_outputs + E_real_loss_outputs + E_gen_loss_outputs
+
+        self.disc_train_model = K_Model(inputs=disc_train_inputs,
+                                        outputs=disc_train_outputs,
+                                        name="disc_train_model")
+
+        disc_train_losses = merge_dicts(disc_losses, enc_losses)
+        self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.2),
+                                      loss=disc_train_losses)
+
+        # GENERATOR TRAINING MODEL
+        self.generator.unfreeze()
+        self.discriminator.freeze()
+        self.encoder.freeze()
+
+        gen_losses, G_loss_outputs = self.generator.get_loss(self.disc_gen)
+        gen_losses = merge_dicts(gen_losses, mi_losses)
+        self.gen_train_model = K_Model(inputs=self.prior_param_inputs,
+                                       outputs=G_loss_outputs + E_gen_loss_outputs,
+                                       name="gen_train_model")
+        self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
+                                     loss=gen_losses)
+
+    def _train_disc_pass(self, samples_batch, labels_batch=None):
+        dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix, dtype=np.float32)] * \
+            len(self.disc_train_model.outputs)
+        inputs = [samples_batch]
+
+        if labels_batch is None and self.encoder.supervised_dist:
+            dim = self.meaningful_dists[self.supervised_dist_name].sample_size()
+            labels_batch = np.zeros((self.batch_size,) + self.shape_prefix + (dim, ))
+
+        if self.encoder.supervised_dist:
+            inputs += [labels_batch]
+
+        prior_params = self.prior.assemble_prior_params()
+        return self.disc_train_model.train_on_batch(inputs + prior_params,
+                                                    dummy_targets)
+
+    def _train_gen_pass(self):
+        dummy_targets = [np.ones((self.batch_size,) + self.shape_prefix, dtype=np.float32)] * \
+            len(self.gen_train_model.outputs)
+        prior_params = self.prior.assemble_prior_params()
+        return self.gen_train_model.train_on_batch(prior_params,
+                                                   dummy_targets)
+
+    def train_on_minibatch(self, samples, labels=None):
+        disc_losses = self._train_disc_pass(samples, labels)
+        gen_losses = self._train_gen_pass()
+
+        loss_logs = {}
+        for loss, loss_name in zip(gen_losses, self.gen_train_model.metrics_names):
+            loss_logs["g_" + loss_name] = loss
+
+        for loss, loss_name in zip(disc_losses, self.disc_train_model.metrics_names):
+            loss_logs["d_" + loss_name] = loss
+
+        return {'losses': loss_logs}
+
+
 class InfoganPriorImpl(InfoganPrior):
 
     def __init__(self,
@@ -336,121 +449,6 @@ class InfoganEncoderImpl(InfoganEncoder):
                     layer.trainable = True
 
         self.network.unfreeze()
-
-
-class InfoGAN2(Model):
-    """
-    Refactored version of infogan
-    """
-
-    def __init__(self,
-                 batch_size,
-                 shape_prefix,
-                 data_shape,
-                 prior,
-                 generator,
-                 discriminator,
-                 encoder):
-        self.batch_size = batch_size
-        self.shape_prefix = shape_prefix
-        self.data_shape = data_shape
-        self.prior = prior
-        self.generator = generator
-        self.discriminator = discriminator
-        self.encoder = encoder
-
-        # PUTTING IT TOGETHER
-        self.sampled_latents, self.prior_param_inputs = self.prior.sample()
-        self.generated = self.generator.generate(self.sampled_latents)
-
-        self.real_input = Input(shape=self.shape_prefix + self.data_shape,
-                                name="real_data_input")
-        self.real_labels = None
-        self.real_labels = encoder.get_labels_input()
-
-        self.gen_encodings = self.encoder.encode(self.generated)
-        mi_losses, E_gen_loss_outputs = self.encoder.get_mi_loss(self.sampled_latents,
-                                                                 self.gen_encodings)
-
-        self.real_encodings = self.encoder.encode(self.real_input)
-        # this can be empty if the encoder is not supervised
-        sup_losses, E_real_loss_outputs = self.encoder.get_supervised_loss(self.real_labels,
-                                                                           self.real_encodings)
-
-        enc_losses = merge_dicts(mi_losses, sup_losses)
-
-        self.disc_gen = self.discriminator.discriminate(self.generated)
-        self.disc_real = self.discriminator.discriminate(self.real_input)
-        disc_losses, D_loss_outputs = self.discriminator.get_loss(
-            self.disc_real, self.disc_gen)
-
-        # DISCRIMINATOR TRAINING MODEL
-        self.generator.freeze()
-
-        disc_train_inputs = [self.real_input]
-        if self.encoder.supervised_dist:
-            disc_train_inputs.append(self.real_labels)
-
-        disc_train_inputs += self.prior_param_inputs
-
-        disc_train_outputs = D_loss_outputs + E_real_loss_outputs + E_gen_loss_outputs
-
-        self.disc_train_model = K_Model(inputs=disc_train_inputs,
-                                        outputs=disc_train_outputs,
-                                        name="disc_train_model")
-
-        disc_train_losses = merge_dicts(disc_losses, enc_losses)
-        self.disc_train_model.compile(optimizer=Adam(lr=2e-4, beta_1=0.2),
-                                      loss=disc_train_losses)
-
-        # GENERATOR TRAINING MODEL
-        self.generator.unfreeze()
-        self.discriminator.freeze()
-        self.encoder.freeze()
-
-        gen_losses, G_loss_outputs = self.generator.get_loss(self.disc_gen)
-        gen_losses = merge_dicts(gen_losses, mi_losses)
-        self.gen_train_model = K_Model(inputs=self.prior_param_inputs,
-                                       outputs=G_loss_outputs + E_gen_loss_outputs,
-                                       name="gen_train_model")
-        self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
-                                     loss=gen_losses)
-
-    def _train_disc_pass(self, samples_batch, labels_batch=None):
-        dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix, dtype=np.float32)] * \
-            len(self.disc_train_model.outputs)
-        inputs = [samples_batch]
-
-        if labels_batch is None and self.encoder.supervised_dist:
-            dim = self.meaningful_dists[self.supervised_dist_name].sample_size()
-            labels_batch = np.zeros((self.batch_size,) + self.shape_prefix + (dim, ))
-
-        if self.encoder.supervised_dist:
-            inputs += [labels_batch]
-
-        prior_params = self.prior.assemble_prior_params()
-        return self.disc_train_model.train_on_batch(inputs + prior_params,
-                                                    dummy_targets)
-
-    def _train_gen_pass(self):
-        dummy_targets = [np.ones((self.batch_size,) + self.shape_prefix, dtype=np.float32)] * \
-            len(self.gen_train_model.outputs)
-        prior_params = self.prior.assemble_prior_params()
-        return self.gen_train_model.train_on_batch(prior_params,
-                                                   dummy_targets)
-
-    def train_on_minibatch(self, samples, labels=None):
-        disc_losses = self._train_disc_pass(samples, labels)
-        gen_losses = self._train_gen_pass()
-
-        loss_logs = {}
-        for loss, loss_name in zip(gen_losses, self.gen_train_model.metrics_names):
-            loss_logs["g_" + loss_name] = loss
-
-        for loss, loss_name in zip(disc_losses, self.disc_train_model.metrics_names):
-            loss_logs["d_" + loss_name] = loss
-
-        return {'losses': loss_logs}
 
 
 def merge_dicts(x, y):
