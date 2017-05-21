@@ -4,8 +4,9 @@ Some network structures used by the InfoGAN
 
 import keras.backend as K
 from keras.layers import Conv2D, BatchNormalization, Activation, Dense, Conv2DTranspose, Flatten, \
-    Reshape
+    Reshape, Input
 from keras.layers.advanced_activations import LeakyReLU
+from keras.models import Model
 
 from learn.networks.interfaces import Network
 
@@ -132,7 +133,7 @@ class DiscriminatorTop(Network):
 
 class BinaryImgGeneratorNetwork(Network):
 
-    def __init__(self, image_shape):
+    def __init__(self, latent_dim, image_shape):
         self.layers = []
 
         # a fully connected is needed to bring the inputs to a shape suitable for convolutions
@@ -167,41 +168,51 @@ class BinaryImgGeneratorNetwork(Network):
                                            name="g_deconv_3"))
         # self.layers.append(Reshape(target_shape=(1,) + image_shape, name="g_param_reshape"))
 
-    def apply(self, inputs):
+        inputs = Input(shape=(latent_dim, ))
         network = inputs
         for layer in self.layers:
             network = layer(network)
-        return network
+
+        self.model = Model(inputs=[inputs], outputs=[network], name="G")
+
+    def apply(self, inputs):
+        return self.model(inputs)
 
 
 class EncoderNetwork(Network):
 
-    def __init__(self, shared_net):
-        self.shared_net = shared_net
+    def __init__(self, shared_net, image_shape):
         # clone the list
-        self.layers = shared_net.layers[:]
+        self.layers = shared_net.layers
 
         self.layers.append(Dense(128, name="e_dense_1"))
         self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
         self.layers.append(LeakyReLU(name="e_dense_activ_1"))
 
-    def apply(self, inputs):
+        inputs = Input(shape=image_shape)
         network = inputs
         for layer in self.layers:
             network = layer(network)
-        return network
+
+        self.model = Model(inputs=[inputs], outputs=[network], name="E")
+
+    def apply(self, inputs):
+        return self.model(inputs)
 
 
 class DiscriminatorNetwork(Network):
 
-    def __init__(self, shared_net):
-        self.shared_net = shared_net
+    def __init__(self, shared_net, image_shape):
         # clone the list
-        self.layers = shared_net.layers[:]
+        self.layers = shared_net.layers
         self.layers.append(Dense(1, name="d_classif_layer"))
 
-    def apply(self, inputs):
+        inputs = Input(shape=image_shape)
         network = inputs
         for layer in self.layers:
             network = layer(network)
-        return network
+
+        self.model = Model(inputs=[inputs], outputs=[network], name="D")
+
+    def apply(self, inputs):
+        return self.model(inputs)

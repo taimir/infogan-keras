@@ -36,7 +36,7 @@ from learn.networks.convnets import EncoderNetwork, SharedNet, DiscriminatorNetw
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
-batch_size = 1
+batch_size = 128
 
 if __name__ == "__main__":
     meaningful_dists = {'c1': Categorical(n_classes=10),
@@ -59,7 +59,7 @@ if __name__ == "__main__":
                              prior_params=prior_params,
                              recurrent_dim=None)
 
-    gen_net = BinaryImgGeneratorNetwork(image_shape=(28, 28, 1))
+    gen_net = BinaryImgGeneratorNetwork(latent_dim=74, image_shape=(28, 28, 1))
     generator = InfoganGeneratorImpl(data_param_shape=(28, 28, 1),
                                      data_shape=(28, 28, 1),
                                      meaningful_dists=meaningful_dists,
@@ -70,10 +70,10 @@ if __name__ == "__main__":
 
     shared_net = SharedNet()
 
-    disc_net = DiscriminatorNetwork(shared_net=shared_net)
+    disc_net = DiscriminatorNetwork(shared_net=shared_net, image_shape=(28, 28, 1))
     discriminator = InfoganDiscriminatorImpl(network=disc_net)
 
-    enc_net = EncoderNetwork(shared_net=shared_net)
+    enc_net = EncoderNetwork(shared_net=shared_net, image_shape=(28, 28, 1))
     encoder = InfoganEncoderImpl(batch_size=batch_size,
                                  meaningful_dists=meaningful_dists,
                                  supervised_dist=None,
