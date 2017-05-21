@@ -183,7 +183,7 @@ class EncoderNetwork(Network):
 
     def __init__(self, shared_net, image_shape):
         # clone the list
-        self.layers = shared_net.layers
+        self.layers = shared_net.layers[:]
 
         self.layers.append(Dense(128, name="e_dense_1"))
         self.layers.append(BatchNormalization(name="e_dense_bn_1", axis=-1, scale=False))
@@ -204,7 +204,7 @@ class DiscriminatorNetwork(Network):
 
     def __init__(self, shared_net, image_shape):
         # clone the list
-        self.layers = shared_net.layers
+        self.layers = shared_net.layers[:]
         self.layers.append(Dense(1, name="d_classif_layer"))
 
         inputs = Input(shape=image_shape)
