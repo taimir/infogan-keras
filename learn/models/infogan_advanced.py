@@ -18,19 +18,24 @@ class InfoGAN2(Model):
 
     def __init__(self,
                  batch_size,
-                 shape_prefix,
                  data_shape,
                  prior,
                  generator,
                  discriminator,
-                 encoder):
+                 encoder,
+                 recurrent_dim):
         self.batch_size = batch_size
-        self.shape_prefix = shape_prefix
         self.data_shape = data_shape
         self.prior = prior
         self.generator = generator
         self.discriminator = discriminator
         self.encoder = encoder
+        self.recurrent_dim = recurrent_dim
+
+        if self.recurrent_dim:
+            self.shape_prefix = (self.recurrent_dim, )
+        else:
+            self.shape_prefix = ()
 
         # PUTTING IT TOGETHER
         self.sampled_latents, self.prior_param_inputs = self.prior.sample()
@@ -127,13 +132,17 @@ class InfoGAN2(Model):
 class InfoganPriorImpl(InfoganPrior):
 
     def __init__(self,
-                 shape_prefix,
                  meaningful_dists,
                  noise_dists,
-                 prior_params):
+                 prior_params,
+                 recurrent_dim):
 
-        super(InfoganPriorImpl, self).__init__(shape_prefix, meaningful_dists,
-                                               noise_dists, prior_params)
+        super(InfoganPriorImpl, self).__init__(meaningful_dists,
+                                               noise_dists, prior_params, recurrent_dim)
+        if self.recurrent_dim:
+            self.shape_prefix = (self.recurrent_dim, )
+        else:
+            self.shape_prefix = ()
 
     def sample(self):
         samples = {}
@@ -166,7 +175,10 @@ class InfoganPriorImpl(InfoganPrior):
             param_dict = {}
             i = 0
             for param_name, dim in zip(param_names, param_dims):
-                param = merged_params[:, i:i + dim]
+                if self.recurrent_dim:
+                    param = merged_params[:, :, i:i + dim]
+                else:
+                    param = merged_params[:, i:i + dim]
                 param_dict[param_name] = param
                 i += dim
 
@@ -199,16 +211,20 @@ class InfoganPriorImpl(InfoganPrior):
 class InfoganGeneratorImpl(InfoganGenerator):
 
     def __init__(self,
-                 shape_prefix,
                  data_param_shape,
                  data_shape,
                  meaningful_dists,
                  noise_dists,
                  data_q_dist,
-                 network):
-        super(InfoganGeneratorImpl, self).__init__(shape_prefix, data_param_shape, data_shape,
+                 network,
+                 recurrent_dim):
+        super(InfoganGeneratorImpl, self).__init__(data_param_shape, data_shape,
                                                    meaningful_dists, noise_dists, data_q_dist,
-                                                   network)
+                                                   network, recurrent_dim)
+        if self.recurrent_dim:
+            self.shape_prefix = (self.recurrent_dim, )
+        else:
+            self.shape_prefix = ()
 
     def generate(self, prior_samples):
         """
@@ -232,14 +248,12 @@ class InfoganGeneratorImpl(InfoganGenerator):
         params_dict = {}
         i = 0
 
-        # put the last dimension in front
-        ndim = K.ndim(params)
-        permutation = [ndim - 1] + list(range(0, ndim - 1))
-        params = K.permute_dimensions(params, permutation)
         for param_name, (param_dim, param_activ) in self.data_q_dist.param_info().items():
-            param = params[i:i + param_dim]
-            reverse_permutation = list(range(1, ndim)) + [0]
-            param = K.permute_dimensions(param, reverse_permutation)
+            if self.recurrent_dim:
+                param = params[:, :, i:i + param_dim]
+            else:
+                param = params[:, i:i + param_dim]
+
             params_dict[param_name] = param_activ(param)
 
         sampled_image = self.data_q_dist.sample(params_dict)
@@ -303,14 +317,19 @@ class InfoganEncoderImpl(InfoganEncoder):
 
     def __init__(self,
                  batch_size,
-                 shape_prefix,
-                 recurrent,
                  meaningful_dists,
                  supervised_dist,
-                 network):
+                 network,
+                 recurrent_dim):
 
-        super(InfoganEncoderImpl, self).__init__(batch_size, shape_prefix, recurrent,
-                                                 meaningful_dists, supervised_dist, network)
+        super(InfoganEncoderImpl, self).__init__(batch_size,
+                                                 meaningful_dists, supervised_dist,
+                                                 network, recurrent_dim)
+
+        if self.recurrent_dim:
+            self.shape_prefix = (self.recurrent_dim, )
+        else:
+            self.shape_prefix = ()
 
         # Define meaningful dist output layers
         self.dist_output_layers = {}
@@ -319,7 +338,7 @@ class InfoganEncoderImpl(InfoganEncoder):
             self.dist_output_layers[dist_name] = {}
             for param, (dim, activation) in info.items():
                 preact = Dense(dim, name="e_dense_{}_{}".format(dist_name, param))
-                if self.recurrent:
+                if self.recurrent_dim:
                     preact = TimeDistributed(preact, name="e_time_{}_{}".format(dist_name, param))
                 act = Activation(activation, name="e_activ_{}_{}".format(dist_name, param))
                 self.dist_output_layers[dist_name][param] = [preact, act]
@@ -384,16 +403,15 @@ class InfoganEncoderImpl(InfoganEncoder):
 
     def _build_loss(self, samples, dist, param_infos):
         def enc_loss(dummy, param_outputs):
-            # flatten the samples and params
             param_dict = {}
             param_index = 0
-            ndim = K.ndim(param_outputs)
-            permutation = [ndim - 1] + list(range(0, ndim - 1))
-            param_outputs = K.permute_dimensions(param_outputs, permutation)
+
             for param_name, dim in param_infos:
-                param = param_outputs[param_index:param_index + dim]
-                reverse_permutation = list(range(1, ndim)) + [0]
-                param = K.permute_dimensions(param, reverse_permutation)
+                if self.recurrent_dim:
+                    param = param_outputs[:, :, param_index:param_index + dim]
+                else:
+                    param = param_outputs[:, param_index:param_index + dim]
+
                 param_dict[param_name] = param
                 param_index += dim
 

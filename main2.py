@@ -53,19 +53,19 @@ if __name__ == "__main__":
                           'std': np.ones((batch_size, 62), dtype=np.float32)}
                     }
 
-    prior = InfoganPriorImpl(shape_prefix=(),
-                             meaningful_dists=meaningful_dists,
+    prior = InfoganPriorImpl(meaningful_dists=meaningful_dists,
                              noise_dists=noise_dists,
-                             prior_params=prior_params)
+                             prior_params=prior_params,
+                             recurrent_dim=None)
 
     gen_net = GeneratorNetwork(image_shape=(28, 28, 1))
-    generator = InfoganGeneratorImpl(shape_prefix=(),
-                                     data_param_shape=(28, 28, 1),
+    generator = InfoganGeneratorImpl(data_param_shape=(28, 28, 1),
                                      data_shape=(28, 28, 1),
                                      meaningful_dists=meaningful_dists,
                                      noise_dists=noise_dists,
                                      data_q_dist=image_dist,
-                                     network=gen_net)
+                                     network=gen_net,
+                                     recurrent_dim=None)
 
     shared_net = SharedNet()
 
@@ -74,19 +74,18 @@ if __name__ == "__main__":
 
     enc_net = EncoderNetwork(shared_net=shared_net)
     encoder = InfoganEncoderImpl(batch_size=batch_size,
-                                 shape_prefix=(),
-                                 recurrent=False,
                                  meaningful_dists=meaningful_dists,
                                  supervised_dist=None,
-                                 network=enc_net)
+                                 network=enc_net,
+                                 recurrent_dim=None)
 
     model = InfoGAN2(batch_size=batch_size,
-                     shape_prefix=(),
                      data_shape=(28, 28, 1),
                      prior=prior,
                      generator=generator,
                      discriminator=discriminator,
-                     encoder=encoder)
+                     encoder=encoder,
+                     recurrent_dim=None)
 
     from keras.utils import plot_model
     plot_model(model.gen_train_model, to_file='gen_train_model.png')

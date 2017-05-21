@@ -14,14 +14,15 @@ class Model:
 class InfoganPrior:
 
     def __init__(self,
-                 shape_prefix,
                  meaningful_dists,
                  noise_dists,
-                 prior_params):
-        self.shape_prefix = shape_prefix
+                 prior_params,
+                 recurrent_dim,
+                 ):
         self.meaningful_dists = meaningful_dists
         self.noise_dists = noise_dists
         self.prior_params = prior_params
+        self.recurrent_dim = recurrent_dim
 
     @abc.abstractmethod
     def sample(self):
@@ -36,20 +37,20 @@ class InfoganPrior:
 class InfoganGenerator:
 
     def __init__(self,
-                 shape_prefix,
                  data_param_shape,
                  data_shape,
                  meaningful_dists,
                  noise_dists,
                  data_q_dist,
-                 network):
-        self.shape_prefix = shape_prefix
+                 network,
+                 recurrent_dim):
         self.data_param_shape = data_param_shape
         self.data_shape = data_shape
         self.meaningful_dists = meaningful_dists
         self.noise_dists = noise_dists
         self.data_q_dist = data_q_dist
         self.network = network
+        self.recurrent_dim = recurrent_dim
 
     @abc.abstractmethod
     def generate(self, prior_samples):
@@ -97,17 +98,15 @@ class InfoganEncoder:
 
     def __init__(self,
                  batch_size,
-                 shape_prefix,
-                 recurrent,
                  meaningful_dists,
                  supervised_dist,
-                 network):
+                 network,
+                 recurrent_dim):
         self.batch_size = batch_size
-        self.shape_prefix = shape_prefix
-        self.recurrent = recurrent
         self.meaningful_dists = meaningful_dists
         self.supervised_dist = supervised_dist
         self.network = network
+        self.recurrent_dim = recurrent_dim
 
     @abc.abstractmethod
     def encode(self, samples):
