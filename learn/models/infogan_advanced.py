@@ -179,6 +179,7 @@ class InfoganPriorImpl(InfoganPrior):
                     param = merged_params[:, :, i:i + dim]
                 else:
                     param = merged_params[:, i:i + dim]
+
                 param_dict[param_name] = param
                 i += dim
 
@@ -256,8 +257,14 @@ class InfoganGeneratorImpl(InfoganGenerator):
 
             params_dict[param_name] = param_activ(param)
 
-        sampled_image = self.data_q_dist.sample(params_dict)
-        return sampled_image
+        sampled_data = self.data_q_dist.sample(params_dict)
+
+        if self.recurrent_dim:
+            sampled_data = sampled_data[:, :, 0]
+        else:
+            sampled_data = sampled_data[:, 0]
+
+        return sampled_data
 
     def get_loss(self, disc_gen_output):
         # add a dummy activation layer, just to be able to name it properly

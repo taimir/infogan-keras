@@ -130,7 +130,7 @@ class DiscriminatorTop(Network):
         return network
 
 
-class GeneratorNetwork(Network):
+class BinaryImgGeneratorNetwork(Network):
 
     def __init__(self, image_shape):
         self.layers = []
@@ -165,6 +165,7 @@ class GeneratorNetwork(Network):
                                            padding='same',
                                            data_format='channels_last',
                                            name="g_deconv_3"))
+        self.layers.append(Reshape(target_shape=(1,) + image_shape, name="g_param_reshape"))
 
     def apply(self, inputs):
         network = inputs
