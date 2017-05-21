@@ -166,7 +166,7 @@ class BinaryImgGeneratorNetwork(Network):
                                            padding='same',
                                            data_format='channels_last',
                                            name="g_deconv_3"))
-        # self.layers.append(Reshape(target_shape=(1,) + image_shape, name="g_param_reshape"))
+        self.layers.append(Reshape(target_shape=(1,) + image_shape, name="g_param_reshape"))
 
         inputs = Input(shape=(latent_dim, ))
         network = inputs
