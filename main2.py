@@ -68,12 +68,12 @@ if __name__ == "__main__":
                                      network=gen_net,
                                      recurrent_dim=None)
 
-    shared_net = SharedNet()
+    shared_net = SharedNet(data_shape=(28, 28, 1))
 
-    disc_net = DiscriminatorNetwork(shared_net=shared_net, image_shape=(28, 28, 1))
+    disc_net = DiscriminatorNetwork(shared_out_shape=(128, ))
     discriminator = InfoganDiscriminatorImpl(network=disc_net)
 
-    enc_net = EncoderNetwork(shared_net=shared_net, image_shape=(28, 28, 1))
+    enc_net = EncoderNetwork(shared_out_shape=(128, ))
     encoder = InfoganEncoderImpl(batch_size=batch_size,
                                  meaningful_dists=meaningful_dists,
                                  supervised_dist=None,
@@ -84,6 +84,7 @@ if __name__ == "__main__":
                      data_shape=(28, 28, 1),
                      prior=prior,
                      generator=generator,
+                     shared_net=shared_net,
                      discriminator=discriminator,
                      encoder=encoder,
                      recurrent_dim=None)

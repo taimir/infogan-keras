@@ -21,6 +21,7 @@ class InfoGAN2(Model):
                  data_shape,
                  prior,
                  generator,
+                 shared_net,
                  discriminator,
                  encoder,
                  recurrent_dim):
@@ -28,6 +29,7 @@ class InfoGAN2(Model):
         self.data_shape = data_shape
         self.prior = prior
         self.generator = generator
+        self.shared_net = shared_net
         self.discriminator = discriminator
         self.encoder = encoder
         self.recurrent_dim = recurrent_dim
@@ -45,19 +47,22 @@ class InfoGAN2(Model):
                                 name="real_data_input")
         self.real_labels = encoder.get_labels_input()
 
-        self.gen_encodings = self.encoder.encode(self.generated)
+        shared_gen = self.shared_net.apply(self.generated)
+        shared_real = self.shared_net.apply(self.real_input)
+
+        self.gen_encodings = self.encoder.encode(shared_gen)
         mi_losses, E_gen_loss_outputs = self.encoder.get_mi_loss(self.sampled_latents,
                                                                  self.gen_encodings)
 
-        self.real_encodings = self.encoder.encode(self.real_input)
+        self.real_encodings = self.encoder.encode(shared_real)
         # this can be empty if the encoder is not supervised
         sup_losses, E_real_loss_outputs = self.encoder.get_supervised_loss(self.real_labels,
                                                                            self.real_encodings)
 
         enc_losses = merge_dicts(mi_losses, sup_losses)
 
-        self.disc_gen = self.discriminator.discriminate(self.generated)
-        self.disc_real = self.discriminator.discriminate(self.real_input)
+        self.disc_gen = self.discriminator.discriminate(shared_gen)
+        self.disc_real = self.discriminator.discriminate(shared_real)
         disc_losses, D_loss_outputs = self.discriminator.get_loss(
             self.disc_real, self.disc_gen)
 
@@ -81,6 +86,7 @@ class InfoGAN2(Model):
 
         # GENERATOR TRAINING MODEL
         self.generator.unfreeze()
+        self.shared_net.freeze()
         self.discriminator.freeze()
         self.encoder.freeze()
 
@@ -119,13 +125,9 @@ class InfoGAN2(Model):
         disc_losses = self._train_disc_pass(samples, labels)
         gen_losses = self._train_gen_pass()
 
-        loss_logs = {}
-        for loss, loss_name in zip(gen_losses, self.gen_train_model.metrics_names):
-            loss_logs["g_" + loss_name] = loss
-
-        for loss, loss_name in zip(disc_losses, self.disc_train_model.metrics_names):
-            loss_logs["d_" + loss_name] = loss
-
+        loss_logs = dict(zip(self.gen_train_model.metrics_names, gen_losses))
+        loss_logs = merge_dicts(loss_logs,
+                                dict(zip(disc_losses, self.disc_train_model.metrics_names)))
         return {'losses': loss_logs}
 
 
@@ -240,8 +242,8 @@ class InfoganGeneratorImpl(InfoganGenerator):
         generation_params = self.network.apply(inputs=merged_samples)
 
         generated = Lambda(function=self._sample_data,
-        output_shape=self.shape_prefix + self.data_shape,
-        name="g_x_sampling")(generation_params)
+                           output_shape=self.shape_prefix + self.data_shape,
+                           name="g_x_sampling")(generation_params)
 
         return generated
 
