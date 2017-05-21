@@ -239,9 +239,10 @@ class InfoganGeneratorImpl(InfoganGenerator):
 
         generation_params = self.network.apply(inputs=merged_samples)
 
-        generated = Lambda(function=self._sample_data,
-                           output_shape=self.shape_prefix + self.data_shape,
-                           name="g_x_sampling")(generation_params)
+        # generated = Lambda(function=self._sample_data,
+        # output_shape=self.shape_prefix + self.data_shape,
+        # name="g_x_sampling")(generation_params)
+        generated = generation_params
 
         return generated
 
