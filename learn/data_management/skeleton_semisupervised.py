@@ -1,6 +1,8 @@
 import os
 
 import numpy as np
+from keras.preprocessing.sequence import pad_sequences
+
 from learn.data_management.interfaces import DataProvider
 
 
@@ -25,15 +27,33 @@ class SemiSupervisedSkeletonProvider(DataProvider):
         object_counts = []
         for sequence in sequences:
             object_counts += [len(frame) for frame in sequence]
-
         print("Min / Max objects: {} - {}".format(min(object_counts), max(object_counts)))
 
         joint_counts = []
         for sequence in sequences:
             for frame in sequence:
                 joint_counts += [len(skeleton) for skeleton in frame]
-
         print("Min / Max joints: {} - {}".format(min(joint_counts), max(joint_counts)))
+
+        assert min(joint_counts) == max(joint_counts), "Joint count must be fixed."
+
+        max_objects = max(object_counts)
+        numpy_sequences = []
+        for sequence in sequences:
+            numpy_frames = []
+            for frame in sequence:
+                if len(frame) < max_objects:
+                    frame += [np.zeros(max(joint_counts), dtype="float32")] * \
+                        (max_objects - len(frame))
+
+                numpy_frame = np.concatenate(frame)
+                numpy_frames.append(numpy_frame)
+
+            numpy_sequences.append(np.stack(numpy_frames))
+
+        data = pad_sequences(numpy_sequences, dtype="float32", padding="post")
+
+        return data
 
     def _load_skeleton_file(self, file_path):
         """
@@ -79,6 +99,8 @@ class SemiSupervisedSkeletonProvider(DataProvider):
 
                 frames.append(skeletons)
 
+        return frames
+
     def _next_int(self, f):
         return int(next(f).split()[0])
 
@@ -96,3 +118,7 @@ class SemiSupervisedSkeletonProvider(DataProvider):
 
     def test_data(self):
         raise NotImplementedError
+
+if __name__ == "__main__":
+    provider = SemiSupervisedSkeletonProvider(batch_size=100)
+    provider._form_data(dir_path="/workspace/action_recogn/skeletons_data")
