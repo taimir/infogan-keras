@@ -9,7 +9,7 @@ import keras.backend.tensorflow_backend as KTF
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 
-def get_session(gpu_fraction=0.8):
+def get_session(gpu_fraction=0.2):
     num_threads = os.environ.get('OMP_NUM_THREADS')
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
                                 allow_growth=True)
@@ -23,15 +23,20 @@ def get_session(gpu_fraction=0.8):
 KTF.set_session(get_session())
 
 import numpy as np
-from learn.models import InfoGAN
-from learn.train.observers import InfoganCheckpointer, InfoganTensorBoard, InfoganLogger
+from learn.models.infogan import InfoGAN2
+from learn.models.infogan import InfoganDiscriminatorImpl, InfoganPriorImpl, \
+    InfoganEncoderImpl, InfoganGeneratorImpl
+
+# InfoganCheckpointer, InfoganTensorBoard, InfoganLogger
+from learn.train.observers import InfoganLogger, InfoganTensorBoard
 from learn.train import ModelTrainer
 from learn.data_management import SemiSupervisedMNISTProvider
-
+from learn.networks.convnets import EncoderNetwork, SharedNet, DiscriminatorNetwork, \
+    BinaryImgGeneratorNetwork
 from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 
 
-batch_size = 256
+batch_size = 128
 
 if __name__ == "__main__":
     meaningful_dists = {'c1': Categorical(n_classes=10),
@@ -49,33 +54,55 @@ if __name__ == "__main__":
                           'std': np.ones((batch_size, 62), dtype=np.float32)}
                     }
 
-    model = InfoGAN(batch_size=batch_size,
-                    image_shape=(28, 28, 1),
-                    noise_dists=noise_dists,
-                    meaningful_dists=meaningful_dists,
-                    image_dist=image_dist,
-                    prior_params=prior_params,
-                    supervised_dist_name="c1")
+    prior = InfoganPriorImpl(meaningful_dists=meaningful_dists,
+                             noise_dists=noise_dists,
+                             prior_params=prior_params,
+                             recurrent_dim=None)
 
-    # from keras.utils import plot_model
-    # plot_model(model.gen_train_model, to_file='gen_train_model.png')
-    # plot_model(model.disc_train_model, to_file='disc_train_model.png')
-    # plot_model(model.encoder_model, to_file='encoder_model.png')
-    # plot_model(model.disc_model, to_file='disc_model.png')
-    # plot_model(model.gen_model, to_file='gen_model.png')
+    gen_net = BinaryImgGeneratorNetwork(latent_dim=74, image_shape=(28, 28, 1))
+    generator = InfoganGeneratorImpl(data_param_shape=(28, 28, 1),
+                                     data_shape=(28, 28, 1),
+                                     meaningful_dists=meaningful_dists,
+                                     noise_dists=noise_dists,
+                                     data_q_dist=image_dist,
+                                     network=gen_net,
+                                     recurrent_dim=None)
+
+    shared_net = SharedNet(data_shape=(28, 28, 1))
+
+    disc_net = DiscriminatorNetwork(shared_out_shape=(128, ))
+    discriminator = InfoganDiscriminatorImpl(network=disc_net)
+
+    enc_net = EncoderNetwork(shared_out_shape=(128, ))
+    encoder = InfoganEncoderImpl(batch_size=batch_size,
+                                 meaningful_dists=meaningful_dists,
+                                 supervised_dist=None,
+                                 network=enc_net,
+                                 recurrent_dim=None)
+
+    model = InfoGAN2(batch_size=batch_size,
+                     data_shape=(28, 28, 1),
+                     prior=prior,
+                     generator=generator,
+                     shared_net=shared_net,
+                     discriminator=discriminator,
+                     encoder=encoder,
+                     recurrent_dim=None)
+
+    from keras.utils import plot_model
+    plot_model(model.gen_train_model, to_file='gen_train_model.png')
+    plot_model(model.disc_train_model, to_file='disc_train_model.png')
 
     # provide the data
     data_provider = SemiSupervisedMNISTProvider(batch_size)
     val_x, val_y = data_provider.validation_data()
 
     # define observers (callbacks during training)
+    logger_observer = InfoganLogger(model=model, epoch_frequency=1)
     tb_observer = InfoganTensorBoard(model=model, experiment_dir=sys.argv[1], epoch_frequency=1,
                                      val_x=val_x, val_y=val_y)
-    checkpoint_observer = InfoganCheckpointer(model=model, experiment_dir=sys.argv[1],
-                                              epoch_frequency=5)
-    logger_observer = InfoganLogger(model=model, epoch_frequency=1)
 
-    observers = [tb_observer, checkpoint_observer, logger_observer]
+    observers = [logger_observer, tb_observer]
 
     # train the model
     model_trainer = ModelTrainer(model, data_provider, observers)

@@ -1,1 +1,0 @@
-from .infogan import InfoGAN
