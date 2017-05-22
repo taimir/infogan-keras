@@ -17,17 +17,17 @@ class RNNGeneratorNetwork(Network):
         self.layers.append(GRU(64, activation="relu", return_sequences=True))
 
         self.layers.append(TimeDistributed(Dense(units=64, name="g_dense_1")))
-        self.layers.append(TimeDistributed(BatchNormalization(name="g_dense_bn_1", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="g_dense_bn_1", axis=-1)))
         self.layers.append(TimeDistributed(Activation(activation=K.relu, name="g_dense_activ_1")))
 
         self.layers.append(TimeDistributed(Dense(units=64,
                                                  name="g_dense_2")))
-        self.layers.append(TimeDistributed(BatchNormalization(name="g_dense_bn_2", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="g_dense_bn_2", axis=-1)))
         self.layers.append(TimeDistributed(Activation(activation=K.relu, name="g_dense_activ_2")))
 
         self.layers.append(TimeDistributed(Dense(units=128,
                                                  name="g_dense_3")))
-        self.layers.append(TimeDistributed(BatchNormalization(name="g_dense_bn_3", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="g_dense_bn_3", axis=-1)))
         self.layers.append(TimeDistributed(Activation(activation=K.relu, name="g_dense_activ_3")))
 
         self.layers.append(TimeDistributed(Dense(units=data_dim * q_data_params_dim,
@@ -63,19 +63,19 @@ class RNNSharedNet(Network):
         self.layers.append(TimeDistributed(LeakyReLU(name="d_conv_activ_1")))
 
         self.layers.append(TimeDistributed(Dense(128)))
-        self.layers.append(TimeDistributed(BatchNormalization(name="d_conv_bn_2", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="d_conv_bn_2", axis=-1)))
         self.layers.append(TimeDistributed(LeakyReLU(name="d_conv_activ_2")))
 
         self.layers.append(TimeDistributed(Dense(128)))
-        self.layers.append(TimeDistributed(BatchNormalization(name="d_conv_bn_3", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="d_conv_bn_3", axis=-1)))
         self.layers.append(TimeDistributed(LeakyReLU(name="d_conv_activ_3")))
 
         self.layers.append(TimeDistributed(Dense(64)))
-        self.layers.append(TimeDistributed(BatchNormalization(name="d_conv_bn_4", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="d_conv_bn_4", axis=-1)))
         self.layers.append(TimeDistributed(LeakyReLU(name="d_conv_activ_4")))
 
         self.layers.append(TimeDistributed(Dense(32, activation="relu")))
-        self.layers.append(TimeDistributed(BatchNormalization(name="d_dense_bn_1", axis=-1)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="d_dense_bn_1", axis=-1)))
         self.layers.append(TimeDistributed(LeakyReLU(name="d_dense_1_activ")))
 
         inputs = Input(shape=(recurrent_dim,) + data_shape)
@@ -94,8 +94,8 @@ class RNNEncoderNetwork(Network):
     def __init__(self, recurrent_dim, shared_out_shape):
         self.layers = []
         self.layers.append(TimeDistributed(Dense(32, name="e_dense_1")))
-        self.layers.append(TimeDistributed(BatchNormalization(name="e_dense_bn_1",
-                                                              axis=-1, scale=False)))
+        # self.layers.append(TimeDistributed(BatchNormalization(name="e_dense_bn_1",
+        # axis=-1, scale=False)))
         self.layers.append(TimeDistributed(LeakyReLU(name="e_dense_activ_1")))
 
         inputs = Input(shape=(recurrent_dim,) + shared_out_shape)
