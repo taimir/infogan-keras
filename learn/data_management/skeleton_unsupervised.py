@@ -6,11 +6,44 @@ from keras.preprocessing.sequence import pad_sequences
 from learn.data_management.interfaces import DataProvider
 
 
-class SemiSupervisedSkeletonProvider(DataProvider):
+class UnsupervisedSkeletonProvider(DataProvider):
 
-    def __init__(self, batch_size, supervision=0.05):
+    def __init__(self, data_path, batch_size):
+        """__init__
+
+        :param data_path: path to the directory containing all skeleton files
+        :param batch_size: training batch size
+        """
+        self.data_path = data_path
         self.batch_size = batch_size
-        self.supervision_frequency = int(1 / supervision)
+
+        data = self._form_data(data_path)
+        N = data.shape[0]
+
+        train_size = int(N * 0.7)
+        testval_size = N - train_size
+        test_size = testval_size // 2
+
+        self.x_train = data[:train_size]
+        self.x_test = data[train_size:train_size + test_size]
+        self.x_val = data[train_size + test_size:]
+
+        self.n_iter = N // self.batch_size
+
+    def iterate_minibatches(self):
+        for i in range(self.n_iter):
+            samples = self.x_train[i * self.batch_size:(i + 1) * self.batch_size]
+            minibatch = (samples, None)
+            yield minibatch
+
+    def training_data(self):
+        return self.x_train, None
+
+    def validation_data(self):
+        return self.x_val, None
+
+    def test_data(self):
+        return self.x_test, None
 
     def _form_data(self, dir_path):
         sequences = []
@@ -107,18 +140,7 @@ class SemiSupervisedSkeletonProvider(DataProvider):
     def _next_float_line(self, f):
         return [float(x) for x in next(f).split()]
 
-    def iterate_minibatches(self):
-        raise NotImplementedError
-
-    def training_data(self):
-        raise NotImplementedError
-
-    def validation_data(self):
-        raise NotImplementedError
-
-    def test_data(self):
-        raise NotImplementedError
 
 if __name__ == "__main__":
-    provider = SemiSupervisedSkeletonProvider(batch_size=100)
+    provider = UnsupervisedSkeletonProvider(batch_size=100)
     provider._form_data(dir_path="/workspace/action_recogn/skeletons_data")
