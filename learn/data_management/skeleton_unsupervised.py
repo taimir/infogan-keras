@@ -8,7 +8,7 @@ from learn.data_management.interfaces import DataProvider
 
 class UnsupervisedSkeletonProvider(DataProvider):
 
-    def __init__(self, data_path, batch_size):
+    def __init__(self, data_path, batch_size, file_limit=100):
         """__init__
 
         :param data_path: path to the directory containing all skeleton files
@@ -17,7 +17,7 @@ class UnsupervisedSkeletonProvider(DataProvider):
         self.data_path = data_path
         self.batch_size = batch_size
 
-        data = self._form_data(data_path)
+        data = self._form_data(data_path, file_limit)
         N = data.shape[0]
 
         train_size = int(N * 0.7)
@@ -45,9 +45,9 @@ class UnsupervisedSkeletonProvider(DataProvider):
     def test_data(self):
         return self.x_test, None
 
-    def _form_data(self, dir_path):
+    def _form_data(self, dir_path, file_limit):
         sequences = []
-        for file_name in os.listdir(dir_path):
+        for file_name in os.listdir(dir_path)[:file_limit]:
             file_path = os.path.join(dir_path, file_name)
             frames = self._load_skeleton_file(file_path)
 
