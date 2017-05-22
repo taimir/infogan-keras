@@ -13,7 +13,9 @@ from learn.models.interfaces import Model, InfoganPrior, InfoganGenerator, Infog
 
 class InfoGAN2(Model):
     """
-    Refactored version of infogan
+    Puts together different networks to form the InfoGAN network as per:
+    "InfoGAN: Interpretable Representation Learning by Information Maximizing Generative Adversarial
+    Nets" by Xi Chen, Yan Duan, Rein Houthooft, John Schulman, Ilya Sutskever, Pieter Abbeel
     """
 
     def __init__(self,
@@ -25,6 +27,17 @@ class InfoGAN2(Model):
                  discriminator,
                  encoder,
                  recurrent_dim):
+        """__init__
+        :param batch_size - number of real samples passed at each iteration
+        :param data_shape - e.g. (img_height, img_width, n_chan), shape of generated images
+        :param prior - where the latents in infogan are sampled from
+        :param generator - G model
+        :param shared_net - network model shared between E and D
+        :param discriminator - D model
+        :param encoder - E model
+        :param recurrent_dim - set to None if data is not recurrent
+        """
+
         self.batch_size = batch_size
         self.data_shape = data_shape
         self.prior = prior
@@ -61,8 +74,8 @@ class InfoGAN2(Model):
 
         enc_losses = merge_dicts(mi_losses, sup_losses)
 
-        self.disc_gen = self.discriminator.discriminate(shared_gen)
         self.disc_real = self.discriminator.discriminate(shared_real)
+        self.disc_gen = self.discriminator.discriminate(shared_gen)
         disc_losses, D_loss_outputs = self.discriminator.get_loss(
             self.disc_real, self.disc_gen)
 
@@ -97,6 +110,30 @@ class InfoGAN2(Model):
                                        name="gen_train_model")
         self.gen_train_model.compile(optimizer=Adam(lr=1e-3, beta_1=0.2),
                                      loss=gen_losses)
+
+        # FOR DEBUGGING
+        self.sample_debug = K.function(inputs=[K.learning_phase()] + self.prior_param_inputs,
+                                       outputs=[self.sampled_latents['c1']])
+        self.gen_and_predict = K.function(inputs=[K.learning_phase()] + self.prior_param_inputs,
+                                          outputs=[G_loss_outputs[0], self.generated])
+        self.disc_predict = K.function(inputs=[K.learning_phase(), self.real_input],
+                                       outputs=[D_loss_outputs[0]])
+
+    def sanity_check(self):
+        """_sanity_check
+
+        Checks that the gen_train_model uses the same discriminator weights
+        as in the disc_model.
+        """
+
+        prior_params = self.prior.assemble_prior_params()
+        gen_score, samples = self.gen_and_predict([0] + prior_params)
+        # disc_score1 = self.disc_model.predict(samples)
+        disc_score2 = self.disc_predict([0, samples])
+
+        # assert np.all(np.isclose(gen_score, disc_score1, atol=1.e-2))
+        assert np.all(np.equal(gen_score, disc_score2))
+        print("Passed")
 
     def _train_disc_pass(self, samples_batch, labels_batch=None):
         dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix, dtype=np.float32)] * \
@@ -133,21 +170,6 @@ class InfoGAN2(Model):
     def load_weights(self, gen_weights_filepath, disc_weights_filepath):
         self.disc_train_model.load_weights(disc_weights_filepath)
         self.gen_train_model.load_weights(gen_weights_filepath)
-
-    # def sanity_check(self):
-        # """_sanity_check
-
-        # Checks that the gen_train_model uses the same discriminator weights
-        # as in the disc_model.
-        # """
-        # prior_params = self._assemble_prior_params()
-        # gen_score, samples = self.gen_and_predict([0] + prior_params)
-        # disc_score1 = self.disc_model.predict(samples)
-        # disc_score2 = self.disc_predict([0, samples])
-        # # print("Disc: {}".format(disc_score))
-        # # print("Gen: {}".format(gen_score))
-        # assert np.all(np.isclose(gen_score, disc_score1, atol=1.e-2))
-        # assert np.all(np.equal(gen_score, disc_score2))
 
 
 class InfoganPriorImpl(InfoganPrior):
@@ -412,7 +434,7 @@ class InfoganEncoderImpl(InfoganEncoder):
 
         return merged_params
 
-    def get_mi_loss(self, gen_samples, gen_encodings):
+    def get_mi_loss(self, sampled_latents, gen_encodings):
         loss_outputs = []
         mi_losses = {}
         for dist_name, dist in self.meaningful_dists.items():
@@ -424,7 +446,7 @@ class InfoganEncoderImpl(InfoganEncoder):
                                      name=loss_output_name)(loss_output)
             loss_outputs.append(loss_output)
 
-            mi_loss = self._build_loss(gen_samples[dist_name], dist, self.orderings[dist_name])
+            mi_loss = self._build_loss(sampled_latents[dist_name], dist, self.orderings[dist_name])
             mi_losses[loss_output_name] = mi_loss
 
         return mi_losses, loss_outputs

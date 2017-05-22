@@ -107,7 +107,7 @@ class Categorical(Distribution):
             # a hack to turn it into one-hot
             onehot = tf.constant(np.eye(self.n_classes, dtype=np.float32))
             result = tf.nn.embedding_lookup(onehot, samples)
-            result = K.reshape(reshaped_params, shape)
+            result = K.reshape(result, shape)
             return result
         else:
             from theano.tensor.shared_randomstreams import RandomStreams
