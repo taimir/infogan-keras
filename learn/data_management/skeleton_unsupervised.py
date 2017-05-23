@@ -28,7 +28,7 @@ class UnsupervisedSkeletonProvider(DataProvider):
         self.x_test = data[train_size:train_size + test_size]
         self.x_val = data[train_size + test_size:]
 
-        self.n_iter = N // self.batch_size
+        self.n_iter = train_size // self.batch_size
 
     def iterate_minibatches(self):
         for i in range(self.n_iter):
