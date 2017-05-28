@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import keras.backend as K
 from keras.utils.np_utils import to_categorical
-from keras.callbacks import TensorBoard
 
 from learn.utils.visualization import image_grid
 from learn.train.observers.interfaces import TrainingObserver
@@ -10,23 +9,16 @@ from learn.train.observers.interfaces import TrainingObserver
 
 class InfoganTensorBoard(TrainingObserver):
 
-    def __init__(self, model, experiment_dir, epoch_frequency, val_x=None, val_y=None):
+    def __init__(self, model, tb_writer, epoch_frequency, val_x=None, val_y=None):
         super(InfoganTensorBoard, self).__init__(model, epoch_frequency, val_x, val_y)
 
-        self.logdir = experiment_dir
+        self.tb_writer = tb_writer
         self.sess = K.get_session()
 
         prior_params = self.model.prior.assemble_prior_params()
-        self.board = TensorBoard(histogram_freq=20, log_dir=self.logdir)
-        self.board.set_model(self.model.disc_train_model)
 
         self.batch_size = self.model.batch_size
         self.vis_data = [val_x[:self.batch_size]] + prior_params
-        board_data = [val_x[:self.batch_size]]
-        if self.model.encoder.supervised_dist:
-            board_data += [val_y[:self.batch_size]]
-        board_data += prior_params
-        self.board.validation_data = board_data
 
         # feed disctionary for the images
         self.vis_feed_dict = dict(zip([self.model.real_input] +
@@ -136,29 +128,27 @@ class InfoganTensorBoard(TrainingObserver):
             result = self.sess.run([summary],
                                    feed_dict=self.vis_feed_dict)
             summary_str = result[0]
-            self.board.writer.add_summary(summary_str, epoch)
+            self.tb_writer.add_summary(summary_str, epoch)
 
         for summary in self.gen_enc_image_summaries:
             result = self.sess.run([summary],
                                    feed_dict=self.vis_feed_dict)
             summary_str = result[0]
-            self.board.writer.add_summary(summary_str, epoch)
+            self.tb_writer.add_summary(summary_str, epoch)
 
         for summary in self.real_enc_image_summaries:
             result = self.sess.run([summary],
                                    feed_dict=self.vis_feed_dict)
             summary_str = result[0]
-            self.board.writer.add_summary(summary_str, epoch)
+            self.tb_writer.add_summary(summary_str, epoch)
 
         for summary, feed_dict in zip(self.gen_cont_summaries, self.gen_cont_summaries_feeds):
             result = self.sess.run([summary],
                                    feed_dict=feed_dict)
             summary_str = result[0]
-            self.board.writer.add_summary(summary_str, epoch)
+            self.tb_writer.add_summary(summary_str, epoch)
 
-        loss_logs = epoch_results['losses']
-        # plot the scalar values & histograms and flush other summaries
-        self.board.on_epoch_end(epoch, loss_logs)
+        self.tb_writer.flush()
 
     def finish(self):
-        self.board.on_train_end({})
+        pass

@@ -27,8 +27,16 @@ def make_skeleton_animation(frames, index, fps, movies_dir):
     DEFAULT_FPS = 30.0
 
     def make_frame(t):
-        verticies = frames[int(t * DEFAULT_FPS)]
-        edges = zip(range(len(CONNECT)), CONNECT)
+        frame_skeletons = frames[int(t * DEFAULT_FPS)]
+        edges = []
+        verticies = []
+        for skeleton in frame_skeletons:
+            verticies.append(skeleton)
+            edges.append(np.array([[a, b] for a, b in zip(range(len(CONNECT)), CONNECT)]))
+
+        verticies = np.concatenate(verticies)
+        edges = np.concatenate(edges)
+
         arr = render_offscreen(verticies, edges, WIDTH, HEIGHT)
 
         return arr
@@ -44,4 +52,4 @@ if __name__ == "__main__":
     data = provider._form_data(
         dir_path="/home/valor/workspace/infogan-keras/learn/utils", file_limit=10)
 
-    make_skeleton_movies(data[:, :, 0])
+    make_skeleton_movies(data)
