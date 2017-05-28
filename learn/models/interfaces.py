@@ -37,14 +37,12 @@ class InfoganPrior:
 class InfoganGenerator:
 
     def __init__(self,
-                 data_param_shape,
                  data_shape,
                  meaningful_dists,
                  noise_dists,
                  data_q_dist,
                  network,
                  recurrent_dim):
-        self.data_param_shape = data_param_shape
         self.data_shape = data_shape
         self.meaningful_dists = meaningful_dists
         self.noise_dists = noise_dists

@@ -91,6 +91,16 @@ class IsotropicGaussian(Distribution):
         }
 
 
+class IsotropicGaussian2(IsotropicGaussian):
+
+    def sample(self, param_dict):
+        mean = param_dict['mean']
+        std = param_dict['std']
+        eps = K.random_normal(shape=K.shape(mean), mean=0, stddev=1.)
+        sample = mean + std * eps
+        return sample
+
+
 class Categorical(Distribution):
 
     def __init__(self, n_classes):

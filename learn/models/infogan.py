@@ -136,7 +136,7 @@ class InfoGAN2(Model):
         print("Passed")
 
     def _train_disc_pass(self, samples_batch, labels_batch=None):
-        dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix, dtype=np.float32)] * \
+        dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix + (1, ), dtype=np.float32)] * \
             len(self.disc_train_model.outputs)
         inputs = [samples_batch]
 
@@ -152,7 +152,7 @@ class InfoGAN2(Model):
                                                     dummy_targets)
 
     def _train_gen_pass(self):
-        dummy_targets = [np.ones((self.batch_size,) + self.shape_prefix, dtype=np.float32)] * \
+        dummy_targets = [np.ones((self.batch_size, ) + self.shape_prefix + (1, ), dtype=np.float32)] * \
             len(self.gen_train_model.outputs)
         prior_params = self.prior.assemble_prior_params()
         return self.gen_train_model.train_on_batch(prior_params,
@@ -255,14 +255,13 @@ class InfoganPriorImpl(InfoganPrior):
 class InfoganGeneratorImpl(InfoganGenerator):
 
     def __init__(self,
-                 data_param_shape,
                  data_shape,
                  meaningful_dists,
                  noise_dists,
                  data_q_dist,
                  network,
                  recurrent_dim):
-        super(InfoganGeneratorImpl, self).__init__(data_param_shape, data_shape,
+        super(InfoganGeneratorImpl, self).__init__(data_shape,
                                                    meaningful_dists, noise_dists, data_q_dist,
                                                    network, recurrent_dim)
         if self.recurrent_dim:

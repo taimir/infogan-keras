@@ -60,8 +60,7 @@ if __name__ == "__main__":
                              recurrent_dim=None)
 
     gen_net = BinaryImgGeneratorNetwork(latent_dim=74, image_shape=(28, 28, 1))
-    generator = InfoganGeneratorImpl(data_param_shape=(28, 28, 1),
-                                     data_shape=(28, 28, 1),
+    generator = InfoganGeneratorImpl(data_shape=(28, 28, 1),
                                      meaningful_dists=meaningful_dists,
                                      noise_dists=noise_dists,
                                      data_q_dist=image_dist,
