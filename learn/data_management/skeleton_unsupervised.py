@@ -33,6 +33,7 @@ class UnsupervisedSkeletonProvider(DataProvider):
     def iterate_minibatches(self):
         for i in range(self.n_iter):
             samples = self.x_train[i * self.batch_size:(i + 1) * self.batch_size]
+            samples = samples.reshape((samples.shape[0], samples.shape[1], -1))
             minibatch = (samples, None)
             yield minibatch
 
@@ -49,8 +50,11 @@ class UnsupervisedSkeletonProvider(DataProvider):
         sequences = []
         for file_name in os.listdir(dir_path)[:file_limit]:
             file_path = os.path.join(dir_path, file_name)
-            frames = self._load_skeleton_file(file_path)
 
+            if not file_path.endswith("skeleton"):
+                continue
+
+            frames = self._load_skeleton_file(file_path)
             sequences.append(frames)
 
         print("Sequences: {}".format(len(sequences)))
@@ -76,10 +80,10 @@ class UnsupervisedSkeletonProvider(DataProvider):
             numpy_frames = []
             for frame in sequence:
                 if len(frame) < max_objects:
-                    frame += [np.zeros(max(joint_counts), dtype="float32")] * \
+                    frame += [np.zeros((max(joint_counts), 3), dtype="float32")] * \
                         (max_objects - len(frame))
 
-                numpy_frame = np.concatenate(frame)
+                numpy_frame = np.stack(frame, axis=0)
                 numpy_frames.append(numpy_frame)
 
             numpy_sequences.append(np.stack(numpy_frames))
@@ -127,7 +131,8 @@ class UnsupervisedSkeletonProvider(DataProvider):
 
                         joints.append(coords)
 
-                    skeleton = np.concatenate(joints)
+                    # (25, 3)
+                    skeleton = np.stack(joints)
                     skeletons.append(skeleton)
 
                 frames.append(skeletons)
