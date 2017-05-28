@@ -60,13 +60,16 @@ def get_current_pixels(width, height):
 def render_offscreen(verticies, edges, width, height, field_of_view=90,
                      near_clip_dist=0.1, far_clip_dist=100.0,
                      trans_x=0.0,
-                     trans_y=-0.5,
-                     trans_z=-5.5):
+                     trans_y=0.0,
+                     trans_z=-5):
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
 
     gluPerspective(field_of_view, (width/height), near_clip_dist, far_clip_dist)
     glTranslatef(trans_x, trans_y, trans_z)
+
+    glLineWidth(3.0)
+    glColor3f(0.9, 0.65, 0.4)
 
     glBegin(GL_LINES)
     for edge in edges:
