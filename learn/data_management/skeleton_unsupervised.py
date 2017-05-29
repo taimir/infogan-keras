@@ -38,13 +38,13 @@ class UnsupervisedSkeletonProvider(DataProvider):
             yield minibatch
 
     def training_data(self):
-        return self.x_train, None
+        return self.x_train.reshape(self.x_train.shape[0], self.x_train.shape[1], -1), None
 
     def validation_data(self):
-        return self.x_val, None
+        return self.x_val.reshape(self.x_val.shape[0], self.x_val.shape[1], -1), None
 
     def test_data(self):
-        return self.x_test, None
+        return self.x_test.reshape(self.x_test.shape[0], self.x_test.shape[1], -1), None
 
     def _form_data(self, dir_path, file_limit):
         sequences = []

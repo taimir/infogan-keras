@@ -1,4 +1,6 @@
 import keras.backend as K
+import numpy as np
+import os
 
 from learn.train.observers.interfaces import TrainingObserver
 from learn.utils.skeleton_movies import make_skeleton_movies
@@ -22,10 +24,11 @@ class SkeletonObserver(TrainingObserver):
 
         print("Generating skeleton movies under {}".format(self.movies_dir))
         # generated skeleton sequences
-        skeleton_sequences = K.sess.run(self.model.generated, feed_dict=self.feed_dict)
+        skeleton_sequences = self.sess.run(self.model.generated, feed_dict=self.feed_dict)
         seq_shape = skeleton_sequences.shape
         skeleton_sequences = skeleton_sequences.reshape((seq_shape[0], seq_shape[1], -1, 25, 3))
-        make_skeleton_movies(skeleton_sequences, moves_dir=self.movies_dir, fps=24)
+        np.save(os.path.join(self.movies_dir, "gen_sequences.npy"), skeleton_sequences)
+        # make_skeleton_movies(skeleton_sequences, movies_dir=self.movies_dir, fps=24)
 
     def finish(self):
         pass

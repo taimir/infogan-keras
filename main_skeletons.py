@@ -28,6 +28,8 @@ from learn.models.infogan import InfoganDiscriminatorImpl, InfoganPriorImpl, \
 
 # InfoganCheckpointer, InfoganTensorBoard, InfoganLogger
 from learn.train.observers import InfoganLogger
+from learn.train.observers.skeleton_observer import SkeletonObserver
+from learn.train.observers.tensorboard import TensorBoardLossObserver
 from learn.train import ModelTrainer
 from learn.data_management.skeleton_unsupervised import UnsupervisedSkeletonProvider
 from learn.networks.rnns import RNNEncoderNetwork, RNNSharedNet, RNNDiscriminatorNetwork, \
@@ -45,6 +47,7 @@ if __name__ == "__main__":
 
     recurrent_dim = val_x.shape[1]
     data_dim = val_x.shape[-1]
+    print("data dim %d" % data_dim)
 
     meaningful_dists = {'c1': Categorical(n_classes=30),
                         'c2': IsotropicGaussian(dim=1),
@@ -108,10 +111,14 @@ if __name__ == "__main__":
 
     # define observers (callbacks during training)
     logger_observer = InfoganLogger(model=model, epoch_frequency=1)
+    skeleton_observer = SkeletonObserver(model=model, epoch_frequency=1, movies_dir="./skeleton_movies")
+
+    tb_writer = tf.summary.FileWriter("logs")
+    tb_observer = TensorBoardLossObserver(model=model, tb_writer=tb_writer)
     # tb_observer = InfoganTensorBoard(model=model, experiment_dir=sys.argv[1], epoch_frequency=1,
     # val_x=val_x, val_y=val_y)
 
-    observers = [logger_observer]
+    observers = [logger_observer, skeleton_observer, tb_observer]
 
     # train the model
     model_trainer = ModelTrainer(model, data_provider, observers)

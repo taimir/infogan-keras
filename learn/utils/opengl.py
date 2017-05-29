@@ -12,7 +12,7 @@ def setup_buffer(width, height):
     glutInit()
     # glutInitWindowPosition(0, 0)
     # glutInitWindowSize(300, 400)
-    glutInitDisplayMode(GLUT_RGB | GLUT_SINGLE | GLUT_DEPTH)
+    # glutInitDisplayMode(GLUT_RGB | GLUT_SINGLE | GLUT_DEPTH)
     # create an invisible window
     glutCreateWindow("skeletons")
     glutHideWindow()
