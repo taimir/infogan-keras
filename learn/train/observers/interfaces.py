@@ -5,7 +5,7 @@ class TrainingObserver:
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, model, epoch_frequency, val_x=None, val_y=None):
+    def __init__(self, model, frequency, val_x=None, val_y=None):
         """__init__
 
         :param model - model which is being trained and observed
@@ -16,14 +16,14 @@ class TrainingObserver:
         self.model = model
         self.val_x = val_x
         self.val_y = val_y
-        self.epoch_frequency = epoch_frequency
+        self.frequency = frequency
 
-    def update(self, epoch, epoch_results):
-        if epoch % self.epoch_frequency == 0:
-            self._update(epoch, epoch_results)
+    def update(self, iteration, iteration_results):
+        if iteration % self.frequency == 0:
+            self._update(iteration, iteration_results)
 
     @abc.abstractmethod
-    def _update(self, epoch, epoch_results):
+    def _update(self, iteration, iteration_results):
         raise NotImplementedError
 
     @abc.abstractmethod

@@ -2,33 +2,13 @@
 Example implementation of InfoGAN
 """
 import sys
-import os
-import tensorflow as tf
-import keras.backend.tensorflow_backend as KTF
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-
-
-def get_session(gpu_fraction=0.2):
-    num_threads = os.environ.get('OMP_NUM_THREADS')
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction,
-                                allow_growth=True)
-
-    if num_threads:
-        return tf.Session(config=tf.ConfigProto(
-            gpu_options=gpu_options, intra_op_parallelism_threads=num_threads))
-    else:
-        return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-
-KTF.set_session(get_session())
-
 import numpy as np
+import tensorflow as tf
+
 from learn.models.infogan import InfoGAN2
 from learn.models.infogan import InfoganDiscriminatorImpl, InfoganPriorImpl, \
     InfoganEncoderImpl, InfoganGeneratorImpl
-
-# InfoganCheckpointer, InfoganTensorBoard, InfoganLogger
-from learn.train.observers import InfoganLogger, InfoganTensorBoard
+from learn.train.observers import Logger, InfoganTensorBoard, TensorBoardLossObserver
 from learn.train import ModelTrainer
 from learn.data_management import SemiSupervisedMNISTProvider
 from learn.networks.convnets import EncoderNetwork, SharedNet, DiscriminatorNetwork, \
@@ -39,6 +19,8 @@ from learn.stats.distributions import Categorical, IsotropicGaussian, Bernoulli
 batch_size = 128
 
 if __name__ == "__main__":
+    experiment_dir = sys.argv[1]
+
     meaningful_dists = {'c1': Categorical(n_classes=10),
                         'c2': IsotropicGaussian(dim=1),
                         'c3': IsotropicGaussian(dim=1)
@@ -97,14 +79,14 @@ if __name__ == "__main__":
     val_x, val_y = data_provider.validation_data()
 
     # define observers (callbacks during training)
-    logger_observer = InfoganLogger(model=model, epoch_frequency=1)
-    tb_observer = InfoganTensorBoard(model=model, experiment_dir=sys.argv[1], epoch_frequency=1,
+    tb_writer = tf.summary.FileWriter(experiment_dir)
+    logger_observer = Logger(model=model, frequency=1)
+    tb_observer = InfoganTensorBoard(model=model, tb_writer=tb_writer, frequency=10,
                                      val_x=val_x, val_y=val_y)
+    tb_loss_observer = TensorBoardLossObserver(model=model, tb_writer=tb_writer, frequency=10)
 
-    observers = [logger_observer, tb_observer]
+    observers = [logger_observer, tb_observer, tb_loss_observer]
 
     # train the model
     model_trainer = ModelTrainer(model, data_provider, observers)
     model_trainer.train(n_epochs=100)
-
-    KTF.get_session().close()

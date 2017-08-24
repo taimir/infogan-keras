@@ -1,8 +1,3 @@
-"""
-Trainer for the InfoGan
-"""
-
-
 class ModelTrainer:
 
     def __init__(self,
@@ -19,14 +14,16 @@ class ModelTrainer:
         self.model = model
         self.data_provider = data_provider
         self.observers = observers
+        self.counter = 0
 
     def train(self, n_epochs):
         for epoch in range(n_epochs):
             for minibatch in self.data_provider.iterate_minibatches():
                 artifacts = self.model.train_on_minibatch(*minibatch)
+                self.counter +=1
 
-            for observer in self.observers:
-                observer.update(epoch, artifacts)
+                for observer in self.observers:
+                    observer.update(self.counter, artifacts)
 
         for observer in self.observers:
             observer.finish()
